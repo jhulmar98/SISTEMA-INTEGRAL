@@ -1,10 +1,12 @@
-const { Pool } = require("pg");
+const { Pool } = require('pg');
 
+// Verificamos que exista la variable
 if (!process.env.DATABASE_URL) {
-  console.error("❌ ERROR: DATABASE_URL no está definida");
+  console.error("❌ DATABASE_URL no está definida");
   process.exit(1);
 }
 
+// 🔥 CONFIGURACIÓN CORRECTA PARA SUPABASE + RENDER
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
@@ -12,12 +14,15 @@ const pool = new Pool({
   }
 });
 
-pool.on("connect", () => {
-  console.log("✅ Conectado a PostgreSQL (Supabase)");
+// Mensaje cuando conecta
+pool.on('connect', () => {
+  console.log('✅ Conectado a PostgreSQL (Supabase)');
 });
 
-pool.on("error", (err) => {
-  console.error("❌ Error inesperado en PostgreSQL", err);
+// Capturar errores
+pool.on('error', (err) => {
+  console.error('❌ Error inesperado en PostgreSQL', err);
 });
 
+// Exportamos la conexión
 module.exports = pool;
