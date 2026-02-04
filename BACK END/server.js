@@ -92,6 +92,19 @@ app.post("/personal", async (req, res) => {
   }
 });
 
+// =======================================
+// 🧪 PROBAR CONEXIÓN A LA BASE DE DATOS
+// =======================================
+app.get("/test-db", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT NOW()");
+    res.json({ ok: true, hora_servidor: result.rows[0] });
+  } catch (error) {
+    console.error("Error DB:", error);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log("Servidor corriendo en puerto", PORT);
 });
