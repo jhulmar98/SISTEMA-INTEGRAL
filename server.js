@@ -9,9 +9,22 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
-// =======================================
-// 🏛 VALIDAR CODIGO DE MUNICIPALIDAD
-// =======================================
+/* =====================================================
+   🧪 PROBAR CONEXIÓN A LA BASE DE DATOS
+===================================================== */
+app.get("/test-db", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT NOW()");
+    res.json({ ok: true, hora_servidor: result.rows[0] });
+  } catch (error) {
+    console.error("Error DB:", error);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+/* =====================================================
+   🏛 VALIDAR CÓDIGO DE MUNICIPALIDAD
+===================================================== */
 app.post("/validar-muni", async (req, res) => {
   const { codigo } = req.body;
 
@@ -32,9 +45,9 @@ app.post("/validar-muni", async (req, res) => {
   }
 });
 
-// =======================================
-// 👮 REGISTRAR SUPERVISOR
-// =======================================
+/* =====================================================
+   👮 REGISTRAR SUPERVISOR
+===================================================== */
 app.post("/registrar-supervisor", async (req, res) => {
   const { muni_id, nombre, dni } = req.body;
 
@@ -53,18 +66,16 @@ app.post("/registrar-supervisor", async (req, res) => {
   }
 });
 
-// =======================================
-// 👮‍♂️ REGISTRAR PERSONAL
-// =======================================
-app.post("/personal", async (req, res) => {
+/* =====================================================
+   👮‍♂️ REGISTRAR MARCACIÓN DE PERSONAL
+===================================================== */
+app.post("/marcar", async (req, res) => {
   const {
     muni_id,
     dni,
-    nombre,
-    cargo,
+    turno_id,
     lat,
     lng,
-    turno_id,
     comentario,
     supervisor_dni
   } = req.body;
@@ -88,23 +99,29 @@ app.post("/personal", async (req, res) => {
     res.json({ ok: true });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: "Error registrando personal" });
+    res.status(500).json({ error: "Error registrando marcación" });
   }
 });
 
-// =======================================
-// 🧪 PROBAR CONEXIÓN A LA BASE DE DATOS
-// =======================================
-app.get("/test-db", async (req, res) => {
+/* =====================================================
+   📋 LISTAR MARCACIONES (para reportes)
+===================================================== */
+app.get("/marcaciones", async (req, res) => {
   try {
-    const result = await pool.query("SELECT NOW()");
-    res.json({ ok: true, hora_servidor: result.rows[0] });
+    const result = await pool.query(
+      `SELECT m.*, p.nombre AS personal_nombre
+       FROM marcaciones m
+       LEFT JOIN personal p ON p.dni = m.personal_dni
+       ORDER BY fecha DESC, hora DESC`
+    );
+    res.json(result.rows);
   } catch (error) {
-    console.error("Error DB:", error);
-    res.status(500).json({ ok: false, error: error.message });
+    console.error(error);
+    res.status(500).json({ error: "Error obteniendo marcaciones" });
   }
 });
 
+/* ===================================================== */
 app.listen(PORT, () => {
-  console.log("Servidor corriendo en puerto", PORT);
+  console.log("🚀 Servidor corriendo en puerto", PORT);
 });
