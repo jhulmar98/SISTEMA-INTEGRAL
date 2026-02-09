@@ -10,14 +10,14 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 
 /* =====================================================
-   🧪 PROBAR CONEXIÓN A LA BASE DE DATOS
+   🧪 TEST DB / HORA SERVIDOR (UTC)
 ===================================================== */
 app.get("/test-db", async (req, res) => {
   try {
     const result = await pool.query("SELECT now() AS hora_utc");
     res.json({
       ok: true,
-      hora_servidor_utc: result.rows[0].hora_utc
+      hora_servidor_utc: result.rows[0].hora_utc,
     });
   } catch (error) {
     console.error("Error DB:", error);
@@ -26,16 +26,18 @@ app.get("/test-db", async (req, res) => {
 });
 
 /* =====================================================
-   🏛 VALIDAR CÓDIGO DE MUNICIPALIDAD
+   🏛 VALIDAR MUNICIPALIDAD
 ===================================================== */
 app.post("/validar-muni", async (req, res) => {
   const { codigo } = req.body;
 
   try {
     const result = await pool.query(
-      `SELECT id, nombre
-       FROM municipalidades
-       WHERE codigo = $1 AND activo = true`,
+      `
+      SELECT id, nombre
+      FROM municipalidades
+      WHERE codigo = $1 AND activo = true
+      `,
       [codigo]
     );
 
@@ -74,7 +76,7 @@ app.post("/registrar-supervisor", async (req, res) => {
 });
 
 /* =====================================================
-   👮‍♂️ REGISTRAR MARCACIÓN (UTC + BLOQUEO 3 MIN)
+   👮‍♂️ REGISTRAR MARCACIÓN (PRODUCCIÓN REAL)
 ===================================================== */
 app.post("/marcar", async (req, res) => {
   const {
@@ -83,11 +85,10 @@ app.post("/marcar", async (req, res) => {
     nombre,
     cargo,
     gerencia,
-    turno_id,
     lat,
     lng,
     comentario = "",
-    supervisor_dni
+    supervisor_dni,
   } = req.body;
 
   const client = await pool.connect();
@@ -95,7 +96,7 @@ app.post("/marcar", async (req, res) => {
   try {
     await client.query("BEGIN");
 
-    /* 1️⃣ BLOQUEO 3 MINUTOS (UTC, DEFINITIVO) */
+    /* 1️⃣ BLOQUEO 3 MINUTOS (UTC - FUENTE ÚNICA) */
     const ultima = await client.query(
       `
       SELECT created_at
@@ -116,12 +117,34 @@ app.post("/marcar", async (req, res) => {
       if (diff.rows[0].segundos < 180) {
         await client.query("ROLLBACK");
         return res.status(409).json({
-          error: "Debe esperar 3 minutos para volver a registrar"
+          error: "Debe esperar 3 minutos para volver a registrar",
         });
       }
     }
 
-    /* 2️⃣ UPSERT PERSONAL */
+    /* 2️⃣ DETERMINAR TURNO ACTIVO (BACKEND MANDA) */
+    const turno = await client.query(
+      `
+      SELECT id
+      FROM turnos
+      WHERE muni_id = $1
+        AND (
+          (hora_inicio < hora_fin AND CURRENT_TIME BETWEEN hora_inicio AND hora_fin)
+          OR
+          (hora_inicio > hora_fin AND (CURRENT_TIME >= hora_inicio OR CURRENT_TIME <= hora_fin))
+        )
+      LIMIT 1
+      `,
+      [muni_id]
+    );
+
+    if (turno.rows.length === 0) {
+      throw new Error("No existe turno activo para esta hora");
+    }
+
+    const turno_id = turno.rows[0].id;
+
+    /* 3️⃣ UPSERT PERSONAL */
     await client.query(
       `
       INSERT INTO personal (dni, muni_id, nombre, cargo, gerencia)
@@ -134,7 +157,7 @@ app.post("/marcar", async (req, res) => {
       [dni, muni_id, nombre, cargo, gerencia]
     );
 
-    /* 3️⃣ INSERTAR UBICACIÓN */
+    /* 4️⃣ INSERTAR UBICACIÓN */
     const ub = await client.query(
       `
       INSERT INTO ubicaciones (muni_id, lat, lng)
@@ -146,15 +169,19 @@ app.post("/marcar", async (req, res) => {
 
     const ubicacion_id = ub.rows[0].id;
 
-    /* 4️⃣ OBTENER SUPERVISOR */
+    /* 5️⃣ OBTENER SUPERVISOR */
     const sup = await client.query(
-      `SELECT id FROM supervisores WHERE dni = $1 AND muni_id = $2`,
+      `
+      SELECT id
+      FROM supervisores
+      WHERE dni = $1 AND muni_id = $2
+      `,
       [supervisor_dni, muni_id]
     );
 
     const supervisor_id = sup.rows[0]?.id || null;
 
-    /* 5️⃣ INSERTAR MARCACIÓN (TIMESTAMP UTC ÚNICO) */
+    /* 6️⃣ INSERTAR MARCACIÓN (EVENTO FINAL) */
     await client.query(
       `
       INSERT INTO marcaciones (
@@ -167,9 +194,7 @@ app.post("/marcar", async (req, res) => {
         comentario,
         created_at
       )
-      VALUES (
-        $1,$2,$3,$4,$5,$6,$7, now()
-      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7, now())
       `,
       [
         muni_id,
@@ -178,16 +203,15 @@ app.post("/marcar", async (req, res) => {
         ubicacion_id,
         turno_id,
         gerencia,
-        comentario
+        comentario,
       ]
     );
 
     await client.query("COMMIT");
     res.json({ ok: true });
-
   } catch (error) {
     await client.query("ROLLBACK");
-    console.error("❌ Error en /marcar:", error);
+    console.error("❌ Error en /marcar:", error.message);
     res.status(500).json({ error: "Error registrando marcación" });
   } finally {
     client.release();
@@ -195,7 +219,7 @@ app.post("/marcar", async (req, res) => {
 });
 
 /* =====================================================
-   ⏱ ÚLTIMA MARCACIÓN (UTC)
+   ⏱ ÚLTIMA MARCACIÓN (UTC – AUDITORÍA)
 ===================================================== */
 app.get("/ultima-marcacion/:dni", async (req, res) => {
   const { dni } = req.params;
@@ -218,7 +242,7 @@ app.get("/ultima-marcacion/:dni", async (req, res) => {
 
     res.json({
       existe: true,
-      timestamp: result.rows[0].created_at
+      timestamp: result.rows[0].created_at,
     });
   } catch (error) {
     console.error("❌ Error última marcación:", error);
