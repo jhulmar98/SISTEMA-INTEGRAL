@@ -20,13 +20,13 @@ app.get("/test-db", async (req, res) => {
       hora_servidor_utc: result.rows[0].hora_utc,
     });
   } catch (error) {
-    console.error("Error DB:", error);
+    console.error("❌ Error DB:", error);
     res.status(500).json({ ok: false, error: error.message });
   }
 });
 
 /* =====================================================
-   🏛 VALIDAR MUNICIPALIDAD
+   🏛 VALIDAR CÓDIGO DE MUNICIPALIDAD
 ===================================================== */
 app.post("/validar-muni", async (req, res) => {
   const { codigo } = req.body;
@@ -47,7 +47,7 @@ app.post("/validar-muni", async (req, res) => {
 
     res.json(result.rows[0]);
   } catch (error) {
-    console.error(error);
+    console.error("❌ validar-muni:", error);
     res.status(500).json({ error: "Error del servidor" });
   }
 });
@@ -70,7 +70,7 @@ app.post("/registrar-supervisor", async (req, res) => {
 
     res.json({ ok: true });
   } catch (error) {
-    console.error(error);
+    console.error("❌ registrar-supervisor:", error);
     res.status(500).json({ error: "Error registrando supervisor" });
   }
 });
@@ -144,7 +144,7 @@ app.post("/marcar", async (req, res) => {
 
     const turno_id = turno.rows[0].id;
 
-    /* 3️⃣ UPSERT PERSONAL */
+    /* 3️⃣ UPSERT PERSONAL (QR = FUENTE DE VERDAD) */
     await client.query(
       `
       INSERT INTO personal (dni, muni_id, nombre, cargo, gerencia)
@@ -181,7 +181,7 @@ app.post("/marcar", async (req, res) => {
 
     const supervisor_id = sup.rows[0]?.id || null;
 
-    /* 6️⃣ INSERTAR MARCACIÓN (EVENTO FINAL) */
+    /* 6️⃣ INSERTAR MARCACIÓN (COHERENTE CON TABLA 7) */
     await client.query(
       `
       INSERT INTO marcaciones (
@@ -190,11 +190,19 @@ app.post("/marcar", async (req, res) => {
         supervisor_id,
         ubicacion_id,
         turno_id,
+        fecha,
+        hora,
         gerencia,
         comentario,
         created_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7, now())
+      VALUES (
+        $1,$2,$3,$4,$5,
+        now()::date,
+        now()::time,
+        $6,$7,
+        now()
+      )
       `,
       [
         muni_id,
@@ -265,7 +273,7 @@ app.get("/marcaciones", async (req, res) => {
     );
     res.json(result.rows);
   } catch (error) {
-    console.error(error);
+    console.error("❌ listar-marcaciones:", error);
     res.status(500).json({ error: "Error obteniendo marcaciones" });
   }
 });
