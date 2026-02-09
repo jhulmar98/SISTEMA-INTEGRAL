@@ -198,8 +198,9 @@ app.post("/marcar", async (req, res) => {
       )
       VALUES (
         $1,$2,$3,$4,$5,
-        now()::date,
-        now()::time,
+        (now() AT TIME ZONE 'America/Lima')::date,
+        (now() AT TIME ZONE 'America/Lima')::time,
+
         $6,$7,
         now()
       )
@@ -282,3 +283,4 @@ app.get("/marcaciones", async (req, res) => {
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
 });
+
