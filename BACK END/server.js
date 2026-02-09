@@ -181,7 +181,41 @@ app.get("/marcaciones", async (req, res) => {
   }
 });
 
+/* =====================================================
+   ⏱ ÚLTIMA MARCACIÓN POR DNI
+===================================================== */
+app.get("/ultima-marcacion/:dni", async (req, res) => {
+  const { dni } = req.params;
+
+  try {
+    const result = await pool.query(
+      `
+      SELECT fecha, hora
+      FROM marcaciones
+      WHERE personal_dni = $1
+      ORDER BY fecha DESC, hora DESC
+      LIMIT 1
+      `,
+      [dni]
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({ existe: false });
+    }
+
+    res.json({
+      existe: true,
+      fecha: result.rows[0].fecha, // yyyy-mm-dd
+      hora: result.rows[0].hora    // HH:mm:ss
+    });
+  } catch (error) {
+    console.error("❌ Error última marcación:", error);
+    res.status(500).json({ error: "Error consultando última marcación" });
+  }
+});
+
 /* ===================================================== */
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
 });
+
