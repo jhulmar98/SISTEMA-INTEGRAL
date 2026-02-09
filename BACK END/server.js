@@ -9,9 +9,22 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
-// =======================================
-// 🏛 VALIDAR CODIGO DE MUNICIPALIDAD
-// =======================================
+/* =====================================================
+   🧪 PROBAR CONEXIÓN A LA BASE DE DATOS
+===================================================== */
+app.get("/test-db", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT NOW()");
+    res.json({ ok: true, hora_servidor: result.rows[0] });
+  } catch (error) {
+    console.error("Error DB:", error);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+/* =====================================================
+   🏛 VALIDAR CÓDIGO DE MUNICIPALIDAD
+===================================================== */
 app.post("/validar-muni", async (req, res) => {
   const { codigo } = req.body;
 
@@ -32,9 +45,9 @@ app.post("/validar-muni", async (req, res) => {
   }
 });
 
-// =======================================
-// 👮 REGISTRAR SUPERVISOR
-// =======================================
+/* =====================================================
+   👮 REGISTRAR SUPERVISOR
+===================================================== */
 app.post("/registrar-supervisor", async (req, res) => {
   const { muni_id, nombre, dni } = req.body;
 
@@ -52,59 +65,123 @@ app.post("/registrar-supervisor", async (req, res) => {
     res.status(500).json({ error: "Error registrando supervisor" });
   }
 });
-
-// =======================================
-// 👮‍♂️ REGISTRAR PERSONAL
-// =======================================
-app.post("/personal", async (req, res) => {
+/* =====================================================
+   👮‍♂️ REGISTRAR MARCACIÓN DE PERSONAL (FINAL)
+===================================================== */
+app.post("/marcar", async (req, res) => {
   const {
     muni_id,
     dni,
     nombre,
     cargo,
+    gerencia,
+    turno_id,
     lat,
     lng,
-    turno_id,
-    comentario,
+    comentario = "",
     supervisor_dni
   } = req.body;
 
+  const client = await pool.connect();
+
   try {
-    // Buscar ID del supervisor
-    const sup = await pool.query(
-      "SELECT id FROM supervisores WHERE dni = $1 AND muni_id = $2",
+    await client.query("BEGIN");
+
+    /* 1️⃣ UPSERT PERSONAL (QR = fuente de verdad) */
+    await client.query(
+      `
+      INSERT INTO personal (dni, muni_id, nombre, cargo, gerencia)
+      VALUES ($1, $2, $3, $4, $5)
+      ON CONFLICT (dni) DO UPDATE SET
+        nombre   = EXCLUDED.nombre,
+        cargo    = EXCLUDED.cargo,
+        gerencia = EXCLUDED.gerencia
+      `,
+      [dni, muni_id, nombre, cargo, gerencia]
+    );
+
+    /* 2️⃣ INSERTAR UBICACIÓN */
+    const ub = await client.query(
+      `
+      INSERT INTO ubicaciones (muni_id, lat, lng)
+      VALUES ($1, $2, $3)
+      RETURNING id
+      `,
+      [muni_id, lat, lng]
+    );
+    const ubicacion_id = ub.rows[0].id;
+
+    /* 3️⃣ OBTENER SUPERVISOR */
+    const sup = await client.query(
+      `SELECT id FROM supervisores WHERE dni = $1 AND muni_id = $2`,
       [supervisor_dni, muni_id]
     );
-
     const supervisor_id = sup.rows[0]?.id || null;
 
-    await pool.query(
-      `INSERT INTO marcaciones
-       (muni_id, personal_dni, supervisor_id, turno_id, lat, lng, fecha, hora, comentario)
-       VALUES ($1,$2,$3,$4,$5,$6,CURRENT_DATE,CURRENT_TIME,$7)`,
-      [muni_id, dni, supervisor_id, turno_id, lat, lng, comentario]
+    /* 4️⃣ INSERTAR MARCACIÓN (SNAPSHOT) */
+    await client.query(
+      `
+      INSERT INTO marcaciones (
+        muni_id,
+        personal_dni,
+        supervisor_id,
+        ubicacion_id,
+        turno_id,
+        fecha,
+        hora,
+        gerencia,
+        comentario
+      )
+      VALUES (
+        $1,$2,$3,$4,$5,
+        CURRENT_DATE,
+        CURRENT_TIME,
+        $6,$7
+      )
+      `,
+      [
+        muni_id,
+        dni,
+        supervisor_id,
+        ubicacion_id,
+        turno_id,
+        gerencia,
+        comentario
+      ]
     );
 
+    await client.query("COMMIT");
     res.json({ ok: true });
+
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("❌ Error en /marcar:", error);
+    res.status(500).json({ error: "Error registrando marcación" });
+  } finally {
+    client.release();
+  }
+});
+
+
+/* =====================================================
+   📋 LISTAR MARCACIONES (para reportes)
+===================================================== */
+app.get("/marcaciones", async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT m.*, p.nombre AS personal_nombre
+       FROM marcaciones m
+       LEFT JOIN personal p ON p.dni = m.personal_dni
+       ORDER BY fecha DESC, hora DESC`
+    );
+    res.json(result.rows);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: "Error registrando personal" });
+    res.status(500).json({ error: "Error obteniendo marcaciones" });
   }
 });
 
-// =======================================
-// 🧪 PROBAR CONEXIÓN A LA BASE DE DATOS
-// =======================================
-app.get("/test-db", async (req, res) => {
-  try {
-    const result = await pool.query("SELECT NOW()");
-    res.json({ ok: true, hora_servidor: result.rows[0] });
-  } catch (error) {
-    console.error("Error DB:", error);
-    res.status(500).json({ ok: false, error: error.message });
-  }
-});
-
+/* ===================================================== */
 app.listen(PORT, () => {
-  console.log("Servidor corriendo en puerto", PORT);
+  console.log("🚀 Servidor corriendo en puerto", PORT);
 });
