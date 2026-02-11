@@ -381,10 +381,79 @@ app.post("/marcar-local", async (req, res) => {
     client.release();
   }
 });
+/* =====================================================
+   🚓 PATRULLAJE SUPERVISOR (TRACKING CONTINUO)
+   - Detecta turno automáticamente
+   - Guarda recorrido completo
+===================================================== */
+app.post("/patrullaje", async (req, res) => {
+  const { muni_id, supervisor_id, lat, lng } = req.body;
+
+  if (!muni_id || !supervisor_id || !lat || !lng) {
+    return res.status(400).json({ error: "Datos incompletos" });
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    /* 1️⃣ DETERMINAR TURNO ACTIVO */
+    const turno = await client.query(
+      `
+      SELECT id
+      FROM turnos
+      WHERE muni_id = $1
+        AND (
+          (hora_inicio < hora_fin AND CURRENT_TIME BETWEEN hora_inicio AND hora_fin)
+          OR
+          (hora_inicio > hora_fin AND (CURRENT_TIME >= hora_inicio OR CURRENT_TIME <= hora_fin))
+        )
+      LIMIT 1
+      `,
+      [muni_id]
+    );
+
+    if (turno.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "No existe turno activo" });
+    }
+
+    const turno_id = turno.rows[0].id;
+
+    /* 2️⃣ INSERTAR TRACKING */
+    await client.query(
+      `
+      INSERT INTO patrullajes_supervisor (
+        muni_id,
+        supervisor_id,
+        turno_id,
+        lat,
+        lng,
+        created_at
+      )
+      VALUES ($1,$2,$3,$4,$5, now())
+      `,
+      [muni_id, supervisor_id, turno_id, lat, lng]
+    );
+
+    await client.query("COMMIT");
+
+    res.json({ ok: true });
+
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("❌ Error en /patrullaje:", error.message);
+    res.status(500).json({ error: "Error registrando patrullaje" });
+  } finally {
+    client.release();
+  }
+});
 
 /* ===================================================== */
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
 });
+
 
 
