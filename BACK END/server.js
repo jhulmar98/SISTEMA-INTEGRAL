@@ -254,7 +254,7 @@ app.get("/ultima-marcacion/:dni", async (req, res) => {
       timestamp: result.rows[0].created_at,
     });
   } catch (error) {
-    console.error("❌ Error última marcación:", error);
+    console.error("❌ Error última marcación:", errorbb);
     res.status(500).json({ error: "Error consultando última marcación" });
   }
 });
@@ -382,24 +382,20 @@ app.post("/marcar-local", async (req, res) => {
   }
 });
 /* =====================================================
-   🚓 PATRULLAJE SUPERVISOR (TRACKING CONTINUO)
+   🚓 PATRULLAJE SUPERVISOR (OPTIMIZADO)
    - Detecta turno automáticamente
-   - Guarda recorrido completo
+   - Inserta sin transacción (alto rendimiento)
 ===================================================== */
 app.post("/patrullaje", async (req, res) => {
   const { muni_id, supervisor_id, lat, lng } = req.body;
 
-  if (!muni_id || !supervisor_id || !lat || !lng) {
+  if (!muni_id || !supervisor_id || lat == null || lng == null) {
     return res.status(400).json({ error: "Datos incompletos" });
   }
 
-  const client = await pool.connect();
-
   try {
-    await client.query("BEGIN");
-
     /* 1️⃣ DETERMINAR TURNO ACTIVO */
-    const turno = await client.query(
+    const turno = await pool.query(
       `
       SELECT id
       FROM turnos
@@ -415,14 +411,13 @@ app.post("/patrullaje", async (req, res) => {
     );
 
     if (turno.rows.length === 0) {
-      await client.query("ROLLBACK");
       return res.status(400).json({ error: "No existe turno activo" });
     }
 
     const turno_id = turno.rows[0].id;
 
     /* 2️⃣ INSERTAR TRACKING */
-    await client.query(
+    await pool.query(
       `
       INSERT INTO patrullajes_supervisor (
         muni_id,
@@ -437,18 +432,14 @@ app.post("/patrullaje", async (req, res) => {
       [muni_id, supervisor_id, turno_id, lat, lng]
     );
 
-    await client.query("COMMIT");
-
     res.json({ ok: true });
 
   } catch (error) {
-    await client.query("ROLLBACK");
     console.error("❌ Error en /patrullaje:", error.message);
     res.status(500).json({ error: "Error registrando patrullaje" });
-  } finally {
-    client.release();
   }
 });
+
 
 /* ===================================================== */
 app.listen(PORT, () => {
