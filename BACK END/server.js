@@ -254,7 +254,8 @@ app.get("/ultima-marcacion/:dni", async (req, res) => {
       timestamp: result.rows[0].created_at,
     });
   } catch (error) {
-    console.error("❌ Error última marcación:", errorbb);
+    console.error("❌ Error última marcación:", error);
+
     res.status(500).json({ error: "Error consultando última marcación" });
   }
 });
@@ -387,9 +388,12 @@ app.post("/marcar-local", async (req, res) => {
    - Inserta sin transacción (alto rendimiento)
 ===================================================== */
 app.post("/patrullaje", async (req, res) => {
+  console.log("🚓 PATRULLAJE RECIBIDO:", req.body);
+
   const { muni_id, supervisor_id, lat, lng } = req.body;
 
-  if (!muni_id || !supervisor_id || lat == null || lng == null) {
+  // Validación correcta (NO usar !variable)
+  if (muni_id == null || supervisor_id == null || lat == null || lng == null) {
     return res.status(400).json({ error: "Datos incompletos" });
   }
 
@@ -445,6 +449,7 @@ app.post("/patrullaje", async (req, res) => {
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
 });
+
 
 
 
