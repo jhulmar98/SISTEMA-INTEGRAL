@@ -278,9 +278,113 @@ app.get("/marcaciones", async (req, res) => {
     res.status(500).json({ error: "Error obteniendo marcaciones" });
   }
 });
+/* =====================================================
+   🏬 REGISTRAR LOCAL
+===================================================== */
+app.post("/marcar-local", async (req, res) => {
+  const {
+    muni_id,
+    codigo_local,
+    nombre_local,
+    direccion,
+    lat,
+    lng,
+    comentario = "",
+    supervisor_dni,
+  } = req.body;
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    // 1️⃣ DETERMINAR TURNO ACTIVO
+    const turno = await client.query(
+      `
+      SELECT id
+      FROM turnos
+      WHERE muni_id = $1
+        AND (
+          (hora_inicio < hora_fin AND CURRENT_TIME BETWEEN hora_inicio AND hora_fin)
+          OR
+          (hora_inicio > hora_fin AND (CURRENT_TIME >= hora_inicio OR CURRENT_TIME <= hora_fin))
+        )
+      LIMIT 1
+      `,
+      [muni_id]
+    );
+
+    if (turno.rows.length === 0) {
+      throw new Error("No existe turno activo");
+    }
+
+    const turno_id = turno.rows[0].id;
+
+    // 2️⃣ OBTENER SUPERVISOR
+    const sup = await client.query(
+      `
+      SELECT id
+      FROM supervisores
+      WHERE dni = $1 AND muni_id = $2
+      `,
+      [supervisor_dni, muni_id]
+    );
+
+    const supervisor_id = sup.rows[0]?.id || null;
+
+    // 3️⃣ INSERTAR MARCACIÓN LOCAL
+    await client.query(
+      `
+      INSERT INTO marcaciones_locales (
+        muni_id,
+        supervisor_id,
+        turno_id,
+        fecha,
+        hora,
+        codigo_local,
+        nombre_local,
+        direccion,
+        lat,
+        lng,
+        comentario,
+        created_at
+      )
+      VALUES (
+        $1,$2,$3,
+        (now() AT TIME ZONE 'America/Lima')::date,
+        (now() AT TIME ZONE 'America/Lima')::time,
+        $4,$5,$6,$7,$8,$9,
+        now()
+      )
+      `,
+      [
+        muni_id,
+        supervisor_id,
+        turno_id,
+        codigo_local,
+        nombre_local,
+        direccion,
+        lat,
+        lng,
+        comentario,
+      ]
+    );
+
+    await client.query("COMMIT");
+    res.json({ ok: true });
+
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("❌ Error en /marcar-local:", error.message);
+    res.status(500).json({ error: "Error registrando local" });
+  } finally {
+    client.release();
+  }
+});
 
 /* ===================================================== */
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
 });
+
 
