@@ -59,16 +59,22 @@ app.post("/registrar-supervisor", async (req, res) => {
   const { muni_id, nombre, dni } = req.body;
 
   try {
-    await pool.query(
+    const result = await pool.query(
       `
       INSERT INTO supervisores (muni_id, nombre, dni)
       VALUES ($1, $2, $3)
-      ON CONFLICT (muni_id, dni) DO NOTHING
+      ON CONFLICT (muni_id, dni)
+      DO UPDATE SET nombre = EXCLUDED.nombre
+      RETURNING id
       `,
       [muni_id, nombre, dni]
     );
 
-    res.json({ ok: true });
+    res.json({
+      ok: true,
+      supervisor_id: result.rows[0].id,
+    });
+
   } catch (error) {
     console.error("❌ registrar-supervisor:", error);
     res.status(500).json({ error: "Error registrando supervisor" });
@@ -449,6 +455,7 @@ app.post("/patrullaje", async (req, res) => {
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
 });
+
 
 
 
