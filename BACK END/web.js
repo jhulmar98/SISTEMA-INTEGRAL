@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const bcrypt = require("bcryptjs");
-const pool = require("../db");
+const pool = require("./db");
 
 /* =====================================================
    🔐 LOGIN WEB
@@ -49,3 +49,4 @@ router.post("/login-web", async (req, res) => {
 });
 
 module.exports = router;
+
