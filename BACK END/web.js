@@ -8,10 +8,23 @@ const pool = require("./db");
 ===================================================== */
 router.post("/login-web", async (req, res) => {
 
-  const { muni_id, correo, password } = req.body;
+  const { codigo, correo, password } = req.body;
 
   try {
 
+    // 🔎 1️⃣ BUSCAR MUNICIPALIDAD POR CÓDIGO
+    const muni = await pool.query(
+      `SELECT id FROM municipalidades WHERE codigo = $1`,
+      [codigo]
+    );
+
+    if (muni.rows.length === 0) {
+      return res.status(404).json({ error: "Municipalidad no encontrada" });
+    }
+
+    const muni_id = muni.rows[0].id;
+
+    // 🔎 2️⃣ BUSCAR USUARIO
     const result = await pool.query(
       `
       SELECT id, nombre, password_hash, rol
@@ -29,6 +42,7 @@ router.post("/login-web", async (req, res) => {
 
     const user = result.rows[0];
 
+    // 🔐 3️⃣ VALIDAR PASSWORD
     const match = await bcrypt.compare(password, user.password_hash);
 
     if (!match) {
@@ -37,16 +51,17 @@ router.post("/login-web", async (req, res) => {
 
     res.json({
       ok: true,
-      id: user.id,
       nombre: user.nombre,
       rol: user.rol
     });
 
   } catch (error) {
     console.error("❌ Error login:", error);
-    res.status(500).json({ error: "Error del servidor" });
+    res.status(500).json({ error: "Error servidor" });
   }
 });
 
+
 module.exports = router;
+
 
