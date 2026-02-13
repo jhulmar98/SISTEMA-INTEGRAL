@@ -437,7 +437,7 @@ app.post("/patrullaje", async (req, res) => {
         lng,
         created_at
       )
-      VALUES ($1,$2,$3,$4,$5, now())
+      VALUES ($1,$2,$3,$4,$5, (now() AT TIME ZONE 'America/Lima'))
       `,
       [muni_id, supervisor_id, turno_id, lat, lng]
     );
@@ -455,6 +455,7 @@ app.post("/patrullaje", async (req, res) => {
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
 });
+
 
 
 
