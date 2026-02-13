@@ -1,3 +1,5 @@
+const webRoutes = require("./web");
+
 const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
@@ -6,6 +8,7 @@ const pool = require("./db");
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(webRoutes);
 
 const PORT = process.env.PORT || 3000;
 
@@ -455,6 +458,7 @@ app.post("/patrullaje", async (req, res) => {
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
 });
+
 
 
 
