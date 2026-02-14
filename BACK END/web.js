@@ -12,9 +12,19 @@ router.post("/login-web", async (req, res) => {
 
   try {
 
-    // 🔎 1️⃣ BUSCAR MUNICIPALIDAD POR CÓDIGO
+    /* 1️⃣ VALIDAR QUE LLEGUEN DATOS */
+    if (!codigo || !correo || !password) {
+      return res.status(400).json({ error: "Datos incompletos" });
+    }
+
+    /* 2️⃣ BUSCAR MUNICIPALIDAD */
     const muni = await pool.query(
-      `SELECT id FROM municipalidades WHERE codigo = $1`,
+      `
+      SELECT id, nombre
+      FROM municipalidades
+      WHERE codigo = $1
+        AND activo = true
+      `,
       [codigo]
     );
 
@@ -23,8 +33,9 @@ router.post("/login-web", async (req, res) => {
     }
 
     const muni_id = muni.rows[0].id;
+    const muni_nombre = muni.rows[0].nombre;
 
-    // 🔎 2️⃣ BUSCAR USUARIO
+    /* 3️⃣ BUSCAR USUARIO WEB */
     const result = await pool.query(
       `
       SELECT id, nombre, password_hash, rol
@@ -42,26 +53,27 @@ router.post("/login-web", async (req, res) => {
 
     const user = result.rows[0];
 
-    // 🔐 3️⃣ VALIDAR PASSWORD
+    /* 4️⃣ VALIDAR PASSWORD */
     const match = await bcrypt.compare(password, user.password_hash);
 
     if (!match) {
       return res.status(401).json({ error: "Contraseña incorrecta" });
     }
 
+    /* 5️⃣ RESPUESTA COMPLETA PARA FRONTEND */
     res.json({
       ok: true,
+      muni_id: muni_id,
+      muni_nombre: muni_nombre,
       nombre: user.nombre,
       rol: user.rol
     });
 
   } catch (error) {
     console.error("❌ Error login:", error);
-    res.status(500).json({ error: "Error servidor" });
+    res.status(500).json({ error: "Error del servidor" });
   }
+
 });
 
-
 module.exports = router;
-
-
