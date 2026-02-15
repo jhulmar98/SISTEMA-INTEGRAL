@@ -12,7 +12,7 @@ router.post("/login-web", async (req, res) => {
 
   try {
 
-    /* 1️⃣ VALIDAR QUE LLEGUEN DATOS */
+    /* 1️⃣ VALIDAR DATOS */
     if (!codigo || !correo || !password) {
       return res.status(400).json({ error: "Datos incompletos" });
     }
@@ -35,7 +35,7 @@ router.post("/login-web", async (req, res) => {
     const muni_id = muni.rows[0].id;
     const muni_nombre = muni.rows[0].nombre;
 
-    /* 3️⃣ BUSCAR USUARIO WEB */
+    /* 3️⃣ BUSCAR USUARIO */
     const result = await pool.query(
       `
       SELECT id, nombre, password_hash, rol
@@ -60,7 +60,7 @@ router.post("/login-web", async (req, res) => {
       return res.status(401).json({ error: "Contraseña incorrecta" });
     }
 
-    /* 5️⃣ RESPUESTA COMPLETA PARA FRONTEND */
+    /* 5️⃣ RESPUESTA FRONTEND */
     res.json({
       ok: true,
       muni_id: muni_id,
@@ -75,5 +75,43 @@ router.post("/login-web", async (req, res) => {
   }
 
 });
+
+
+/* =====================================================
+   👥 OBTENER GERENCIAS (DINÁMICO DESDE PERSONAL)
+===================================================== */
+router.get("/gerencias", async (req, res) => {
+
+  const { muni_id } = req.query;
+
+  if (!muni_id) {
+    return res.status(400).json({ error: "muni_id requerido" });
+  }
+
+  try {
+
+    const result = await pool.query(
+      `
+      SELECT DISTINCT gerencia
+      FROM personal
+      WHERE muni_id = $1
+        AND activo = true
+        AND gerencia IS NOT NULL
+      ORDER BY gerencia ASC
+      `,
+      [muni_id]
+    );
+
+    const gerencias = result.rows.map(r => r.gerencia);
+
+    res.json(gerencias);
+
+  } catch (error) {
+    console.error("❌ Error obteniendo gerencias:", error);
+    res.status(500).json({ error: "Error del servidor" });
+  }
+
+});
+
 
 module.exports = router;
