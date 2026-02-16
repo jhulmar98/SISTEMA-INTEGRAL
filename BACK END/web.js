@@ -12,12 +12,10 @@ router.post("/login-web", async (req, res) => {
 
   try {
 
-    /* 1️⃣ VALIDAR DATOS */
     if (!codigo || !correo || !password) {
       return res.status(400).json({ error: "Datos incompletos" });
     }
 
-    /* 2️⃣ BUSCAR MUNICIPALIDAD */
     const muni = await pool.query(
       `
       SELECT id, nombre
@@ -35,10 +33,9 @@ router.post("/login-web", async (req, res) => {
     const muni_id = muni.rows[0].id;
     const muni_nombre = muni.rows[0].nombre;
 
-    /* 3️⃣ BUSCAR USUARIO */
     const result = await pool.query(
       `
-      SELECT id, nombre, password_hash, rol
+      SELECT id, nombre, correo, password_hash, rol
       FROM usuarios_web
       WHERE muni_id = $1
         AND correo = $2
@@ -53,19 +50,18 @@ router.post("/login-web", async (req, res) => {
 
     const user = result.rows[0];
 
-    /* 4️⃣ VALIDAR PASSWORD */
     const match = await bcrypt.compare(password, user.password_hash);
 
     if (!match) {
       return res.status(401).json({ error: "Contraseña incorrecta" });
     }
 
-    /* 5️⃣ RESPUESTA FRONTEND */
     res.json({
       ok: true,
       muni_id: muni_id,
       muni_nombre: muni_nombre,
       nombre: user.nombre,
+      correo: user.correo,
       rol: user.rol
     });
 
@@ -78,7 +74,7 @@ router.post("/login-web", async (req, res) => {
 
 
 /* =====================================================
-   👥 OBTENER GERENCIAS (DINÁMICO DESDE PERSONAL)
+   👥 OBTENER GERENCIAS
 ===================================================== */
 router.get("/gerencias", async (req, res) => {
 
@@ -102,12 +98,128 @@ router.get("/gerencias", async (req, res) => {
       [muni_id]
     );
 
-    const gerencias = result.rows.map(r => r.gerencia);
-
-    res.json(gerencias);
+    res.json(result.rows.map(r => r.gerencia));
 
   } catch (error) {
     console.error("❌ Error obteniendo gerencias:", error);
+    res.status(500).json({ error: "Error del servidor" });
+  }
+
+});
+
+
+/* =====================================================
+   📋 LISTAR USUARIOS WEB
+===================================================== */
+router.get("/usuarios-web", async (req, res) => {
+
+  const { muni_id, rol } = req.query;
+
+  if (!muni_id) {
+    return res.status(400).json({ error: "muni_id requerido" });
+  }
+
+  try {
+
+    let query = `
+      SELECT id, nombre, correo, rol
+      FROM usuarios_web
+      WHERE muni_id = $1
+        AND activo = true
+    `;
+
+    const values = [muni_id];
+
+    if (rol) {
+      query += ` AND rol = $2`;
+      values.push(rol);
+    }
+
+    query += ` ORDER BY id DESC`;
+
+    const result = await pool.query(query, values);
+
+    res.json(result.rows);
+
+  } catch (error) {
+    console.error("❌ Error listando usuarios:", error);
+    res.status(500).json({ error: "Error del servidor" });
+  }
+
+});
+
+
+/* =====================================================
+   ➕ CREAR USUARIO WEB
+===================================================== */
+router.post("/crear-usuario-web", async (req, res) => {
+
+  const { muni_id, nombre, correo, password, rol } = req.body;
+
+  if (!muni_id || !nombre || !correo || !password || !rol) {
+    return res.status(400).json({ error: "Datos incompletos" });
+  }
+
+  try {
+
+    const salt = await bcrypt.genSalt(10);
+    const hash = await bcrypt.hash(password, salt);
+
+    const result = await pool.query(
+      `
+      INSERT INTO usuarios_web (
+        muni_id,
+        nombre,
+        correo,
+        password_hash,
+        rol
+      )
+      VALUES ($1,$2,$3,$4,$5)
+      RETURNING id
+      `,
+      [muni_id, nombre, correo, hash, rol]
+    );
+
+    res.json({
+      ok: true,
+      id: result.rows[0].id
+    });
+
+  } catch (error) {
+
+    if (error.code === "23505") {
+      return res.status(400).json({ error: "Correo ya registrado" });
+    }
+
+    console.error("❌ Error creando usuario:", error);
+    res.status(500).json({ error: "Error del servidor" });
+  }
+
+});
+
+
+/* =====================================================
+   🗑 DESACTIVAR USUARIO WEB
+===================================================== */
+router.delete("/eliminar-usuario-web/:id", async (req, res) => {
+
+  const { id } = req.params;
+
+  try {
+
+    await pool.query(
+      `
+      UPDATE usuarios_web
+      SET activo = false
+      WHERE id = $1
+      `,
+      [id]
+    );
+
+    res.json({ ok: true });
+
+  } catch (error) {
+    console.error("❌ Error eliminando usuario:", error);
     res.status(500).json({ error: "Error del servidor" });
   }
 
