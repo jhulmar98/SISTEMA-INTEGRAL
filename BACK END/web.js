@@ -2,9 +2,8 @@ const express = require("express");
 const router = express.Router();
 const bcrypt = require("bcryptjs");
 const pool = require("./db");
-
 /* =====================================================
-   🏢 LISTAR GERENCIAS
+   🏢 LISTAR GERENCIAS (DESDE PERSONAL)
 ===================================================== */
 router.get("/gerencias", async (req, res) => {
 
@@ -18,11 +17,12 @@ router.get("/gerencias", async (req, res) => {
 
     const result = await pool.query(
       `
-      SELECT id, nombre
-      FROM gerencias
+      SELECT DISTINCT gerencia
+      FROM personal
       WHERE muni_id = $1
         AND activo = true
-      ORDER BY nombre ASC
+        AND gerencia IS NOT NULL
+      ORDER BY gerencia ASC
       `,
       [muni_id]
     );
@@ -482,4 +482,5 @@ router.delete("/geocercas/:id", async (req, res) => {
 
 
 module.exports = router;
+
 
