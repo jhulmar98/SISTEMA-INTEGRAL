@@ -16,6 +16,7 @@ router.post("/login-web", async (req, res) => {
       return res.status(400).json({ error: "Datos incompletos" });
     }
 
+    /* 1️⃣ BUSCAR MUNICIPALIDAD */
     const muni = await pool.query(
       `
       SELECT id, nombre
@@ -33,6 +34,7 @@ router.post("/login-web", async (req, res) => {
     const muni_id = muni.rows[0].id;
     const muni_nombre = muni.rows[0].nombre;
 
+    /* 2️⃣ BUSCAR USUARIO */
     const result = await pool.query(
       `
       SELECT id, nombre, correo, password_hash, rol
@@ -50,6 +52,7 @@ router.post("/login-web", async (req, res) => {
 
     const user = result.rows[0];
 
+    /* 3️⃣ VALIDAR PASSWORD */
     const match = await bcrypt.compare(password, user.password_hash);
 
     if (!match) {
@@ -220,6 +223,68 @@ router.delete("/eliminar-usuario-web/:id", async (req, res) => {
 
   } catch (error) {
     console.error("❌ Error eliminando usuario:", error);
+    res.status(500).json({ error: "Error del servidor" });
+  }
+
+});
+
+
+/* =====================================================
+   🔐 CAMBIAR CONTRASEÑA (SOLO SUPERVISOR)
+===================================================== */
+router.put("/cambiar-password/:id", async (req, res) => {
+
+  const { id } = req.params;
+  const { muni_id, nuevaPassword } = req.body;
+
+  if (!muni_id || !nuevaPassword) {
+    return res.status(400).json({ error: "Datos incompletos" });
+  }
+
+  try {
+
+    const result = await pool.query(
+      `
+      SELECT id, rol, muni_id
+      FROM usuarios_web
+      WHERE id = $1
+        AND activo = true
+      `,
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    const user = result.rows[0];
+
+    /* Validar misma municipalidad */
+    if (user.muni_id !== parseInt(muni_id)) {
+      return res.status(403).json({ error: "No autorizado" });
+    }
+
+    /* Solo supervisores */
+    if (user.rol !== "SUPERVISOR") {
+      return res.status(403).json({ error: "Solo se puede modificar supervisores" });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hash = await bcrypt.hash(nuevaPassword, salt);
+
+    await pool.query(
+      `
+      UPDATE usuarios_web
+      SET password_hash = $1
+      WHERE id = $2
+      `,
+      [hash, id]
+    );
+
+    res.json({ ok: true });
+
+  } catch (error) {
+    console.error("❌ Error cambiando contraseña:", error);
     res.status(500).json({ error: "Error del servidor" });
   }
 
