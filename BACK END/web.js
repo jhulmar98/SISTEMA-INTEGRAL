@@ -3,7 +3,7 @@ const router = express.Router();
 const bcrypt = require("bcryptjs");
 const pool = require("./db");
 /* =====================================================
-   🏢 LISTAR GERENCIAS (DESDE PERSONAL)
+   👥 OBTENER GERENCIAS (DINÁMICO DESDE PERSONAL)
 ===================================================== */
 router.get("/gerencias", async (req, res) => {
 
@@ -27,18 +27,16 @@ router.get("/gerencias", async (req, res) => {
       [muni_id]
     );
 
-    res.json(result.rows);
+    const gerencias = result.rows.map(r => r.gerencia);
+
+    res.json(gerencias);
 
   } catch (error) {
-
-    console.error("❌ Error listando gerencias:", error);
+    console.error("❌ Error obteniendo gerencias:", error);
     res.status(500).json({ error: "Error del servidor" });
-
   }
 
 });
-
-
 /* =====================================================
    🔐 LOGIN WEB
 ===================================================== */
@@ -482,5 +480,6 @@ router.delete("/geocercas/:id", async (req, res) => {
 
 
 module.exports = router;
+
 
 
