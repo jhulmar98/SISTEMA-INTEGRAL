@@ -4,6 +4,42 @@ const bcrypt = require("bcryptjs");
 const pool = require("./db");
 
 /* =====================================================
+   🏢 LISTAR GERENCIAS
+===================================================== */
+router.get("/gerencias", async (req, res) => {
+
+  const { muni_id } = req.query;
+
+  if (!muni_id) {
+    return res.status(400).json({ error: "muni_id requerido" });
+  }
+
+  try {
+
+    const result = await pool.query(
+      `
+      SELECT id, nombre
+      FROM gerencias
+      WHERE muni_id = $1
+        AND activo = true
+      ORDER BY nombre ASC
+      `,
+      [muni_id]
+    );
+
+    res.json(result.rows);
+
+  } catch (error) {
+
+    console.error("❌ Error listando gerencias:", error);
+    res.status(500).json({ error: "Error del servidor" });
+
+  }
+
+});
+
+
+/* =====================================================
    🔐 LOGIN WEB
 ===================================================== */
 router.post("/login-web", async (req, res) => {
@@ -446,3 +482,4 @@ router.delete("/geocercas/:id", async (req, res) => {
 
 
 module.exports = router;
+
