@@ -502,13 +502,12 @@ app.get("/turno-actual", async (req, res) => {
     res.status(500).json({ error: "Error del servidor" });
   }
 });
-
 /* =====================================================
-   📍 MARCACIONES ACTUALES (DÍA + TURNO ACTUAL)
+   📍 MARCACIONES ACTUALES (DÍA + TURNO + GERENCIA OPCIONAL)
 ===================================================== */
 app.get("/marcaciones-actuales", async (req, res) => {
 
-  const { muni_id } = req.query;
+  const { muni_id, gerencia } = req.query;
 
   if (!muni_id) {
     return res.status(400).json({ error: "muni_id requerido" });
@@ -516,8 +515,7 @@ app.get("/marcaciones-actuales", async (req, res) => {
 
   try {
 
-    const result = await pool.query(
-      `
+    let query = `
       SELECT 
         m.id,
         m.personal_dni,
@@ -525,8 +523,7 @@ app.get("/marcaciones-actuales", async (req, res) => {
         p.cargo,
         m.gerencia,
         u.lat,
-        u.lng,
-        t.codigo_turno
+        u.lng
       FROM marcaciones m
       JOIN personal p ON p.dni = m.personal_dni
       JOIN ubicaciones u ON u.id = m.ubicacion_id
@@ -552,9 +549,16 @@ app.get("/marcaciones-actuales", async (req, res) => {
               )
             LIMIT 1
         )
-      `,
-      [muni_id]
-    );
+    `;
+
+    const values = [muni_id];
+
+    if (gerencia) {
+      query += ` AND m.gerencia = $2`;
+      values.push(gerencia);
+    }
+
+    const result = await pool.query(query, values);
 
     res.json(result.rows);
 
@@ -565,10 +569,12 @@ app.get("/marcaciones-actuales", async (req, res) => {
 
 });
 
+
 /* ===================================================== */
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
 });
+
 
 
 
