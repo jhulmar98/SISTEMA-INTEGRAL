@@ -466,19 +466,30 @@ app.get("/turno-actual", async (req, res) => {
   try {
 
     const turno = await pool.query(
-      `
-      SELECT codigo_turno
-      FROM turnos
-      WHERE muni_id = $1
-        AND (
-          (hora_inicio < hora_fin AND CURRENT_TIME BETWEEN hora_inicio AND hora_fin)
-          OR
-          (hora_inicio > hora_fin AND (CURRENT_TIME >= hora_inicio OR CURRENT_TIME <= hora_fin))
-        )
-      LIMIT 1
-      `,
-      [muni_id]
-    );
+        `
+        SELECT codigo_turno
+        FROM turnos
+        WHERE muni_id = $1
+          AND (
+            (hora_inicio < hora_fin AND 
+             (now() AT TIME ZONE 'America/Lima')::time 
+             BETWEEN hora_inicio AND hora_fin)
+      
+            OR
+      
+            (hora_inicio > hora_fin AND 
+             (
+               (now() AT TIME ZONE 'America/Lima')::time >= hora_inicio
+               OR
+               (now() AT TIME ZONE 'America/Lima')::time <= hora_fin
+             )
+            )
+          )
+        LIMIT 1
+        `,
+        [muni_id]
+      );
+
 
     if (turno.rows.length === 0) {
       return res.json({ codigo_turno: null });
@@ -497,6 +508,7 @@ app.get("/turno-actual", async (req, res) => {
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
 });
+
 
 
 
