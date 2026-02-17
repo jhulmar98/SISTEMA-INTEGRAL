@@ -456,7 +456,6 @@ app.post("/patrullaje", async (req, res) => {
    ⏰ OBTENER TURNO ACTUAL (PARA WEB)
 ===================================================== */
 app.get("/turno-actual", async (req, res) => {
-
   const { muni_id } = req.query;
 
   if (!muni_id) {
@@ -464,50 +463,42 @@ app.get("/turno-actual", async (req, res) => {
   }
 
   try {
-
     const turno = await pool.query(
-        `
-        SELECT codigo_turno
-        FROM turnos
-        WHERE muni_id = $1
-          AND (
-            (hora_inicio < hora_fin AND 
-             (now() AT TIME ZONE 'America/Lima')::time 
-             BETWEEN hora_inicio AND hora_fin)
-      
-            OR
-      
-            (hora_inicio > hora_fin AND 
-             (
-               (now() AT TIME ZONE 'America/Lima')::time >= hora_inicio
-               OR
-               (now() AT TIME ZONE 'America/Lima')::time <= hora_fin
-             )
-            )
-          )
-        LIMIT 1
-        `,
-        [muni_id]
-      );
-
+      `
+      SELECT codigo_turno
+      FROM turnos
+      WHERE muni_id = $1
+        AND (
+          (hora_inicio < hora_fin AND 
+           (now() AT TIME ZONE 'America/Lima')::time BETWEEN hora_inicio AND hora_fin)
+          OR
+          (hora_inicio > hora_fin AND 
+           ((now() AT TIME ZONE 'America/Lima')::time >= hora_inicio OR
+            (now() AT TIME ZONE 'America/Lima')::time <= hora_fin))
+        )
+      LIMIT 1
+      `,
+      [muni_id]
+    );
 
     if (turno.rows.length === 0) {
       return res.json({ codigo_turno: null });
     }
 
     res.json({ codigo_turno: turno.rows[0].codigo_turno });
-
   } catch (error) {
     console.error("❌ Error turno actual:", error);
     res.status(500).json({ error: "Error del servidor" });
   }
 });
 
+
 /* =====================================================
-   📍 MARCACIONES ACTUALES (COMPLETO CON DATOS)
+   📍 MARCACIONES ACTUALES (ÚLTIMO ESCANEO POR PERSONA)
+   - 1 fila por personal_dni (último created_at)
+   - Filtra por muni_id + fecha + turno (opcional) + gerencia (opcional)
 ===================================================== */
 app.get("/marcaciones-actuales", async (req, res) => {
-
   const { muni_id, fecha, turno, gerencia } = req.query;
 
   if (!muni_id || !fecha) {
@@ -515,69 +506,84 @@ app.get("/marcaciones-actuales", async (req, res) => {
   }
 
   try {
-
+    // 1) Turno -> turno_id (si llega "T1/T2/T3"). Si llega "Todo" o vacío, no filtra.
     let turno_id = null;
 
-    if (turno) {
-      const turnoQuery = await pool.query(
+    if (turno && turno !== "Todo") {
+      const t = await pool.query(
         `
         SELECT id
         FROM turnos
         WHERE muni_id = $1
           AND codigo_turno = $2
+        LIMIT 1
         `,
         [muni_id, turno]
       );
 
-      if (turnoQuery.rows.length > 0) {
-        turno_id = turnoQuery.rows[0].id;
-      }
+      if (t.rows.length > 0) turno_id = t.rows[0].id;
     }
 
+    // 2) Query base: DISTINCT ON (personal_dni) para traer solo el último escaneo por persona
+    // Importante: ORDER BY debe empezar por la misma llave del DISTINCT ON
     let query = `
-      SELECT 
-        m.personal_dni AS dni,
-        p.nombre,
-        p.cargo,
-        m.gerencia,
-        m.comentario,
-        m.fecha,
-        m.hora,
-        u.lat,
-        u.lng,
-        s.nombre AS supervisor_nombre,
-        s.dni AS supervisor_dni
+      SELECT DISTINCT ON (m.personal_dni)
+        m.personal_dni               AS dni,
+        COALESCE(p.nombre, '')       AS nombre,
+        COALESCE(p.cargo,  '')       AS cargo,
+
+        m.gerencia                   AS gerencia,
+        COALESCE(s.nombre, '')       AS supervisor_nombre,
+        COALESCE(s.dni,    '')       AS supervisor_dni,
+
+        COALESCE(m.comentario, '')   AS comentario,
+        m.fecha                      AS fecha,
+        m.hora                       AS hora,
+        m.created_at                 AS created_at,
+
+        u.lat                        AS lat,
+        u.lng                        AS lng
       FROM marcaciones m
       INNER JOIN ubicaciones u ON u.id = m.ubicacion_id
-      LEFT JOIN personal p ON p.dni = m.personal_dni
-      LEFT JOIN supervisores s ON s.id = m.supervisor_id
+      LEFT JOIN personal p     ON p.dni = m.personal_dni
+      LEFT JOIN supervisores s ON s.id  = m.supervisor_id
       WHERE m.muni_id = $1
-        AND m.fecha = $2
+        AND m.fecha  = $2
     `;
 
     const values = [muni_id, fecha];
-    let index = 3;
+    let idx = 3;
 
     if (turno_id) {
-      query += ` AND m.turno_id = $${index}`;
+      query += ` AND m.turno_id = $${idx}`;
       values.push(turno_id);
-      index++;
+      idx++;
     }
 
-    if (gerencia) {
-      query += ` AND TRIM(m.gerencia) = TRIM($${index})`;
+    if (gerencia && gerencia.trim() !== "") {
+      query += ` AND TRIM(m.gerencia) = TRIM($${idx})`;
       values.push(gerencia);
-      index++;
+      idx++;
     }
 
-    query += ` ORDER BY m.created_at DESC`;
+    // 3) Esto hace que para cada dni, salga el último created_at
+    query += `
+      ORDER BY m.personal_dni, m.created_at DESC
+    `;
 
     const result = await pool.query(query, values);
 
-    console.log("📍 MARCACIONES COMPLETAS:", result.rows.length);
+    // LOG de auditoría
+    console.log("📍 /marcaciones-actuales (ULTIMO POR PERSONA):", {
+      muni_id,
+      fecha,
+      turno: turno || null,
+      turno_id,
+      gerencia: gerencia || null,
+      filas: result.rows.length,
+    });
 
     res.json(result.rows);
-
   } catch (error) {
     console.error("❌ Error marcaciones-actuales:", error);
     res.status(500).json({ error: "Error del servidor" });
@@ -589,6 +595,7 @@ app.get("/marcaciones-actuales", async (req, res) => {
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
 });
+
 
 
 
