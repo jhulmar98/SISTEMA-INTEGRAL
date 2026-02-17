@@ -503,77 +503,87 @@ app.get("/turno-actual", async (req, res) => {
   }
 });
 /* =====================================================
-   📍 MARCACIONES ACTUALES (DÍA + TURNO + GERENCIA OPCIONAL)
+   📍 MARCACIONES ACTUALES (CORRECTO SEGÚN TU ESQUEMA)
 ===================================================== */
 app.get("/marcaciones-actuales", async (req, res) => {
 
-  const { muni_id, gerencia } = req.query;
+  const { muni_id, fecha, turno, gerencia } = req.query;
 
-  if (!muni_id) {
-    return res.status(400).json({ error: "muni_id requerido" });
+  if (!muni_id || !fecha) {
+    return res.status(400).json({ error: "muni_id y fecha requeridos" });
   }
 
   try {
 
+    // 1️⃣ Obtener turno_id real desde codigo_turno
+    let turno_id = null;
+
+    if (turno) {
+      const turnoQuery = await pool.query(
+        `
+        SELECT id
+        FROM turnos
+        WHERE muni_id = $1
+          AND codigo_turno = $2
+        `,
+        [muni_id, turno]
+      );
+
+      if (turnoQuery.rows.length > 0) {
+        turno_id = turnoQuery.rows[0].id;
+      }
+    }
+
+    // 2️⃣ Construir query dinámica
     let query = `
       SELECT 
-        m.id,
         m.personal_dni,
-        p.nombre,
-        p.cargo,
         m.gerencia,
         u.lat,
         u.lng
       FROM marcaciones m
-      JOIN personal p ON p.dni = m.personal_dni
-      JOIN ubicaciones u ON u.id = m.ubicacion_id
-      JOIN turnos t ON t.id = m.turno_id
+      INNER JOIN ubicaciones u 
+        ON u.id = m.ubicacion_id
       WHERE m.muni_id = $1
-        AND m.fecha = (now() AT TIME ZONE 'America/Lima')::date
-        AND t.id = (
-            SELECT id
-            FROM turnos
-            WHERE muni_id = $1
-              AND (
-                (hora_inicio < hora_fin AND 
-                 (now() AT TIME ZONE 'America/Lima')::time 
-                 BETWEEN hora_inicio AND hora_fin)
-                OR
-                (hora_inicio > hora_fin AND 
-                 (
-                   (now() AT TIME ZONE 'America/Lima')::time >= hora_inicio
-                   OR
-                   (now() AT TIME ZONE 'America/Lima')::time <= hora_fin
-                 )
-                )
-              )
-            LIMIT 1
-        )
+        AND m.fecha = $2
     `;
 
-    const values = [muni_id];
+    const values = [muni_id, fecha];
+    let index = 3;
 
-    if (gerencia) {
-      query += ` AND m.gerencia = $2`;
-      values.push(gerencia);
+    if (turno_id) {
+      query += ` AND m.turno_id = $${index}`;
+      values.push(turno_id);
+      index++;
     }
 
+    if (gerencia) {
+      query += ` AND TRIM(m.gerencia) = TRIM($${index})`;
+      values.push(gerencia);
+      index++;
+    }
+
+    query += ` ORDER BY m.created_at DESC`;
+
     const result = await pool.query(query, values);
+
+    console.log("📍 MARCACIONES ACTUALES:", result.rows.length);
 
     res.json(result.rows);
 
   } catch (error) {
-    console.error("❌ Error marcaciones actuales:", error);
+    console.error("❌ Error marcaciones-actuales:", error);
     res.status(500).json({ error: "Error del servidor" });
   }
-
 });
+
 
 
 /* ===================================================== */
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
 });
+
 
 
 
