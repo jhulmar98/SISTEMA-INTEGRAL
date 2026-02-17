@@ -502,62 +502,70 @@ app.get("/turno-actual", async (req, res) => {
     res.status(500).json({ error: "Error del servidor" });
   }
 });
+
 /* =====================================================
-   📍 MARCACIONES ACTUALES (CORRECTO SEGÚN TU ESQUEMA)
+   📍 MARCACIONES ACTUALES (COMPLETO CON DATOS)
 ===================================================== */
 app.get("/marcaciones-actuales", async (req, res) => {
 
-  const { muni_id, turno, gerencia } = req.query;
+  const { muni_id, fecha, turno, gerencia } = req.query;
 
-  if (!muni_id || !turno) {
-    return res.status(400).json({ error: "muni_id y turno requeridos" });
+  if (!muni_id || !fecha) {
+    return res.status(400).json({ error: "muni_id y fecha requeridos" });
   }
 
   try {
 
-    // 1️⃣ Obtener turno_id real
-    const turnoQuery = await pool.query(
-      `
-      SELECT id
-      FROM turnos
-      WHERE muni_id = $1
-        AND codigo_turno = $2
-      `,
-      [muni_id, turno]
-    );
+    let turno_id = null;
 
-    if (turnoQuery.rows.length === 0) {
-      return res.json([]);
+    if (turno) {
+      const turnoQuery = await pool.query(
+        `
+        SELECT id
+        FROM turnos
+        WHERE muni_id = $1
+          AND codigo_turno = $2
+        `,
+        [muni_id, turno]
+      );
+
+      if (turnoQuery.rows.length > 0) {
+        turno_id = turnoQuery.rows[0].id;
+      }
     }
-
-    const turno_id = turnoQuery.rows[0].id;
-
-    // 2️⃣ Fecha actual Lima (SIEMPRE backend)
-    const fechaQuery = await pool.query(
-      `SELECT (now() AT TIME ZONE 'America/Lima')::date AS fecha_actual`
-    );
-
-    const fecha_actual = fechaQuery.rows[0].fecha_actual;
 
     let query = `
       SELECT 
-        m.personal_dni,
+        m.personal_dni AS dni,
+        p.nombre,
+        p.cargo,
         m.gerencia,
+        m.comentario,
+        m.fecha,
+        m.hora,
         u.lat,
-        u.lng
+        u.lng,
+        s.nombre AS supervisor_nombre,
+        s.dni AS supervisor_dni
       FROM marcaciones m
-      INNER JOIN ubicaciones u 
-        ON u.id = m.ubicacion_id
+      INNER JOIN ubicaciones u ON u.id = m.ubicacion_id
+      LEFT JOIN personal p ON p.dni = m.personal_dni
+      LEFT JOIN supervisores s ON s.id = m.supervisor_id
       WHERE m.muni_id = $1
-        AND m.turno_id = $2
-        AND m.fecha = $3
+        AND m.fecha = $2
     `;
 
-    const values = [muni_id, turno_id, fecha_actual];
-    let index = 4;
+    const values = [muni_id, fecha];
+    let index = 3;
+
+    if (turno_id) {
+      query += ` AND m.turno_id = $${index}`;
+      values.push(turno_id);
+      index++;
+    }
 
     if (gerencia) {
-      query += ` AND LOWER(TRIM(m.gerencia)) = LOWER(TRIM($${index}))`;
+      query += ` AND TRIM(m.gerencia) = TRIM($${index})`;
       values.push(gerencia);
       index++;
     }
@@ -566,7 +574,7 @@ app.get("/marcaciones-actuales", async (req, res) => {
 
     const result = await pool.query(query, values);
 
-    console.log("📍 MARCACIONES FILTRADAS:", result.rows.length);
+    console.log("📍 MARCACIONES COMPLETAS:", result.rows.length);
 
     res.json(result.rows);
 
@@ -577,11 +585,11 @@ app.get("/marcaciones-actuales", async (req, res) => {
 });
 
 
-
 /* ===================================================== */
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
 });
+
 
 
 
