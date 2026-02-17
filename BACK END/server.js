@@ -503,11 +503,73 @@ app.get("/turno-actual", async (req, res) => {
   }
 });
 
+/* =====================================================
+   📍 MARCACIONES ACTUALES (DÍA + TURNO ACTUAL)
+===================================================== */
+app.get("/marcaciones-actuales", async (req, res) => {
+
+  const { muni_id } = req.query;
+
+  if (!muni_id) {
+    return res.status(400).json({ error: "muni_id requerido" });
+  }
+
+  try {
+
+    const result = await pool.query(
+      `
+      SELECT 
+        m.id,
+        m.personal_dni,
+        p.nombre,
+        p.cargo,
+        m.gerencia,
+        u.lat,
+        u.lng,
+        t.codigo_turno
+      FROM marcaciones m
+      JOIN personal p ON p.dni = m.personal_dni
+      JOIN ubicaciones u ON u.id = m.ubicacion_id
+      JOIN turnos t ON t.id = m.turno_id
+      WHERE m.muni_id = $1
+        AND m.fecha = (now() AT TIME ZONE 'America/Lima')::date
+        AND t.id = (
+            SELECT id
+            FROM turnos
+            WHERE muni_id = $1
+              AND (
+                (hora_inicio < hora_fin AND 
+                 (now() AT TIME ZONE 'America/Lima')::time 
+                 BETWEEN hora_inicio AND hora_fin)
+                OR
+                (hora_inicio > hora_fin AND 
+                 (
+                   (now() AT TIME ZONE 'America/Lima')::time >= hora_inicio
+                   OR
+                   (now() AT TIME ZONE 'America/Lima')::time <= hora_fin
+                 )
+                )
+              )
+            LIMIT 1
+        )
+      `,
+      [muni_id]
+    );
+
+    res.json(result.rows);
+
+  } catch (error) {
+    console.error("❌ Error marcaciones actuales:", error);
+    res.status(500).json({ error: "Error del servidor" });
+  }
+
+});
 
 /* ===================================================== */
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
 });
+
 
 
 
