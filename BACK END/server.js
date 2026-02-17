@@ -452,12 +452,52 @@ app.post("/patrullaje", async (req, res) => {
     res.status(500).json({ error: "Error registrando patrullaje" });
   }
 });
+/* =====================================================
+   ⏰ OBTENER TURNO ACTUAL (PARA WEB)
+===================================================== */
+app.get("/turno-actual", async (req, res) => {
+
+  const { muni_id } = req.query;
+
+  if (!muni_id) {
+    return res.status(400).json({ error: "muni_id requerido" });
+  }
+
+  try {
+
+    const turno = await pool.query(
+      `
+      SELECT codigo_turno
+      FROM turnos
+      WHERE muni_id = $1
+        AND (
+          (hora_inicio < hora_fin AND CURRENT_TIME BETWEEN hora_inicio AND hora_fin)
+          OR
+          (hora_inicio > hora_fin AND (CURRENT_TIME >= hora_inicio OR CURRENT_TIME <= hora_fin))
+        )
+      LIMIT 1
+      `,
+      [muni_id]
+    );
+
+    if (turno.rows.length === 0) {
+      return res.json({ codigo_turno: null });
+    }
+
+    res.json({ codigo_turno: turno.rows[0].codigo_turno });
+
+  } catch (error) {
+    console.error("❌ Error turno actual:", error);
+    res.status(500).json({ error: "Error del servidor" });
+  }
+});
 
 
 /* ===================================================== */
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
 });
+
 
 
 
