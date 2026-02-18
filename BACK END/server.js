@@ -136,13 +136,22 @@ app.post("/marcar", async (req, res) => {
       `
       SELECT id
       FROM turnos
-      WHERE muni_id = $1
-        AND (
-          (hora_inicio < hora_fin AND CURRENT_TIME BETWEEN hora_inicio AND hora_fin)
-          OR
-          (hora_inicio > hora_fin AND (CURRENT_TIME >= hora_inicio OR CURRENT_TIME <= hora_fin))
-        )
-      LIMIT 1
+         WHERE muni_id = $1
+           AND (
+             (hora_inicio < hora_fin AND 
+               (now() AT TIME ZONE 'America/Lima')::time 
+                 BETWEEN hora_inicio AND hora_fin)
+             OR
+             (hora_inicio > hora_fin AND 
+               (
+                 (now() AT TIME ZONE 'America/Lima')::time >= hora_inicio
+                 OR
+                 (now() AT TIME ZONE 'America/Lima')::time <= hora_fin
+               )
+             )
+           )
+         LIMIT 1
+
       `,
       [muni_id]
     );
@@ -211,7 +220,8 @@ app.post("/marcar", async (req, res) => {
         (now() AT TIME ZONE 'America/Lima')::time,
 
         $6,$7,
-        now()
+        (now() AT TIME ZONE 'America/Lima')
+
       )
       `,
       [
@@ -315,9 +325,20 @@ app.post("/marcar-local", async (req, res) => {
       FROM turnos
       WHERE muni_id = $1
         AND (
-          (hora_inicio < hora_fin AND CURRENT_TIME BETWEEN hora_inicio AND hora_fin)
+          (hora_inicio < hora_fin AND 
+             (now() AT TIME ZONE 'America/Lima')::time 
+               BETWEEN hora_inicio AND hora_fin)
+
           OR
-          (hora_inicio > hora_fin AND (CURRENT_TIME >= hora_inicio OR CURRENT_TIME <= hora_fin))
+          
+            (hora_inicio > hora_fin AND 
+             (
+               (now() AT TIME ZONE 'America/Lima')::time >= hora_inicio
+               OR
+               (now() AT TIME ZONE 'America/Lima')::time <= hora_fin
+             )
+            )
+
         )
       LIMIT 1
       `,
@@ -414,9 +435,20 @@ app.post("/patrullaje", async (req, res) => {
       FROM turnos
       WHERE muni_id = $1
         AND (
-          (hora_inicio < hora_fin AND CURRENT_TIME BETWEEN hora_inicio AND hora_fin)
+          (hora_inicio < hora_fin AND 
+             (now() AT TIME ZONE 'America/Lima')::time 
+               BETWEEN hora_inicio AND hora_fin)
+
           OR
-          (hora_inicio > hora_fin AND (CURRENT_TIME >= hora_inicio OR CURRENT_TIME <= hora_fin))
+          
+            (hora_inicio > hora_fin AND 
+             (
+               (now() AT TIME ZONE 'America/Lima')::time >= hora_inicio
+               OR
+               (now() AT TIME ZONE 'America/Lima')::time <= hora_fin
+             )
+            )
+
         )
       LIMIT 1
       `,
@@ -622,6 +654,7 @@ app.get("/marcaciones-actuales", async (req, res) => {
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
 });
+
 
 
 
