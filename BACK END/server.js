@@ -59,18 +59,21 @@ app.post("/validar-muni", async (req, res) => {
    👮 REGISTRAR SUPERVISOR
 ===================================================== */
 app.post("/registrar-supervisor", async (req, res) => {
-  const { muni_id, nombre, dni } = req.body;
+  const { muni_id, nombre, dni, cargo, gerencia } = req.body;
 
   try {
     const result = await pool.query(
       `
-      INSERT INTO supervisores (muni_id, nombre, dni)
-      VALUES ($1, $2, $3)
+      INSERT INTO supervisores (muni_id, nombre, dni, cargo, gerencia)
+      VALUES ($1, $2, $3, $4, $5)
       ON CONFLICT (muni_id, dni)
-      DO UPDATE SET nombre = EXCLUDED.nombre
+      DO UPDATE SET
+        nombre   = EXCLUDED.nombre,
+        cargo    = EXCLUDED.cargo,
+        gerencia = EXCLUDED.gerencia
       RETURNING id
       `,
-      [muni_id, nombre, dni]
+      [muni_id, nombre, dni, cargo, gerencia]
     );
 
     res.json({
@@ -83,6 +86,7 @@ app.post("/registrar-supervisor", async (req, res) => {
     res.status(500).json({ error: "Error registrando supervisor" });
   }
 });
+
 
 /* =====================================================
    👮‍♂️ REGISTRAR MARCACIÓN (PRODUCCIÓN REAL)
@@ -767,6 +771,7 @@ app.get("/marcaciones-actuales", async (req, res) => {
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
 });
+
 
 
 
