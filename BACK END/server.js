@@ -484,6 +484,89 @@ app.post("/patrullaje", async (req, res) => {
     res.status(500).json({ error: "Error registrando patrullaje" });
   }
 });
+
+/* =====================================================
+   📡 SUPERVISORES ACTIVOS (ÚLTIMA UBICACIÓN)
+===================================================== */
+app.get("/supervisores-activos", async (req, res) => {
+  const { muni_id } = req.query;
+
+  if (!muni_id) {
+    return res.status(400).json({ error: "muni_id requerido" });
+  }
+
+  try {
+
+    const result = await pool.query(
+      `
+      SELECT DISTINCT ON (ps.supervisor_id)
+        ps.supervisor_id,
+        s.nombre,
+        ps.lat,
+        ps.lng,
+        ps.created_at,
+        t.codigo_turno,
+
+        CASE
+          WHEN ps.created_at > (now() AT TIME ZONE 'America/Lima') - interval '2 minutes'
+          THEN true
+          ELSE false
+        END AS activo
+
+      FROM patrullajes_supervisor ps
+      JOIN supervisores s ON s.id = ps.supervisor_id
+      LEFT JOIN turnos t ON t.id = ps.turno_id
+
+      WHERE ps.muni_id = $1
+
+      ORDER BY ps.supervisor_id, ps.created_at DESC
+      `,
+      [muni_id]
+    );
+
+    res.json(result.rows);
+
+  } catch (error) {
+    console.error("❌ Error supervisores-activos:", error);
+    res.status(500).json({ error: "Error del servidor" });
+  }
+});
+
+/* =====================================================
+   🗺 RECORRIDO DEL SUPERVISOR (SOLO HOY)
+===================================================== */
+app.get("/recorrido-supervisor", async (req, res) => {
+  const { muni_id, supervisor_id } = req.query;
+
+  if (!muni_id || !supervisor_id) {
+    return res.status(400).json({
+      error: "muni_id y supervisor_id requeridos"
+    });
+  }
+
+  try {
+
+    const result = await pool.query(
+      `
+      SELECT lat, lng, created_at
+      FROM patrullajes_supervisor
+      WHERE muni_id = $1
+        AND supervisor_id = $2
+        AND (created_at AT TIME ZONE 'America/Lima')::date =
+            (now() AT TIME ZONE 'America/Lima')::date
+      ORDER BY created_at ASC
+      `,
+      [muni_id, supervisor_id]
+    );
+
+    res.json(result.rows);
+
+  } catch (error) {
+    console.error("❌ Error recorrido-supervisor:", error);
+    res.status(500).json({ error: "Error del servidor" });
+  }
+});
+
 /* =====================================================
    ⏰ OBTENER TURNO ACTUAL (PARA WEB)
 ===================================================== */
@@ -654,6 +737,7 @@ app.get("/marcaciones-actuales", async (req, res) => {
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
 });
+
 
 
 
