@@ -131,7 +131,7 @@ app.post("/marcar", async (req, res) => {
   try {
     await client.query("BEGIN");
 
-    /* 1️⃣ BLOQUEO 3 MINUTOS (UTC - FUENTE ÚNICA) */
+    /* 1️⃣ BLOQUEO 3 MINUTOS */
     const ultima = await client.query(
       `
       SELECT created_at
@@ -157,38 +157,37 @@ app.post("/marcar", async (req, res) => {
       }
     }
 
-    /* 2️⃣ DETERMINAR TURNO ACTIVO (BACKEND MANDA) */
+    /* 2️⃣ TURNO ACTIVO */
     const turno = await client.query(
       `
       SELECT id
       FROM turnos
-         WHERE muni_id = $1
-           AND (
-             (hora_inicio < hora_fin AND 
-               (now() AT TIME ZONE 'America/Lima')::time 
-                 BETWEEN hora_inicio AND hora_fin)
-             OR
-             (hora_inicio > hora_fin AND 
-               (
-                 (now() AT TIME ZONE 'America/Lima')::time >= hora_inicio
-                 OR
-                 (now() AT TIME ZONE 'America/Lima')::time <= hora_fin
-               )
-             )
-           )
-         LIMIT 1
-
+      WHERE muni_id = $1
+        AND (
+          (hora_inicio < hora_fin AND 
+            (now() AT TIME ZONE 'America/Lima')::time 
+              BETWEEN hora_inicio AND hora_fin)
+          OR
+          (hora_inicio > hora_fin AND 
+            (
+              (now() AT TIME ZONE 'America/Lima')::time >= hora_inicio
+              OR
+              (now() AT TIME ZONE 'America/Lima')::time <= hora_fin
+            )
+          )
+        )
+      LIMIT 1
       `,
       [muni_id]
     );
 
     if (turno.rows.length === 0) {
-      throw new Error("No existe turno activo para esta hora");
+      throw new Error("No existe turno activo");
     }
 
     const turno_id = turno.rows[0].id;
 
-    /* 3️⃣ UPSERT PERSONAL (QR = FUENTE DE VERDAD) */
+    /* 3️⃣ UPSERT PERSONAL */
     await client.query(
       `
       INSERT INTO personal (dni, muni_id, nombre, cargo, gerencia)
@@ -201,48 +200,44 @@ app.post("/marcar", async (req, res) => {
       [dni, muni_id, nombre, cargo, gerencia]
     );
 
-    /* 4️⃣ INSERTAR UBICACIÓN */
+    /* 4️⃣ DETECTAR SECTOR */
+    let sector_nombre = null;
+
+    const geos = await client.query(
+      `SELECT id, nombre FROM geocercas WHERE muni_id = $1 AND activo = true`,
+      [muni_id]
+    );
+
+    for (const geo of geos.rows) {
+      const puntos = await client.query(
+        `
+        SELECT lat, lng
+        FROM geocerca_puntos
+        WHERE geocerca_id = $1
+        ORDER BY orden
+        `,
+        [geo.id]
+      );
+
+      if (pointInPolygon(lat, lng, puntos.rows)) {
+        sector_nombre = geo.nombre;
+        break;
+      }
+    }
+
+    /* 5️⃣ INSERTAR UBICACIÓN CON SECTOR */
     const ub = await client.query(
       `
-      INSERT INTO ubicaciones (muni_id, lat, lng)
-      VALUES ($1, $2, $3)
+      INSERT INTO ubicaciones (muni_id, lat, lng, sector)
+      VALUES ($1, $2, $3, $4)
       RETURNING id
       `,
-      [muni_id, lat, lng]
+      [muni_id, lat, lng, sector_nombre]
     );
 
     const ubicacion_id = ub.rows[0].id;
 
-   let sector_id = null;
-
-// 1️⃣ Obtener geocercas activas
-const geos = await client.query(
-  `SELECT id FROM geocercas WHERE muni_id = $1 AND activo = true`,
-  [muni_id]
-);
-
-// 2️⃣ Verificar si el punto cae dentro de alguna geocerca
-for (const geo of geos.rows) {
-
-  const puntos = await client.query(
-    `SELECT lat, lng
-     FROM geocerca_puntos
-     WHERE geocerca_id = $1
-     ORDER BY orden`,
-    [geo.id]
-  );
-
-  const poligono = puntos.rows;
-
-  if (pointInPolygon(lat, lng, poligono)) {
-    sector_id = geo.id;
-    break;
-  }
-}
-
-     
-
-    /* 5️⃣ OBTENER SUPERVISOR */
+    /* 6️⃣ OBTENER SUPERVISOR */
     const sup = await client.query(
       `
       SELECT id
@@ -254,7 +249,7 @@ for (const geo of geos.rows) {
 
     const supervisor_id = sup.rows[0]?.id || null;
 
-    /* 6️⃣ INSERTAR MARCACIÓN (COHERENTE CON TABLA 7) */
+    /* 7️⃣ INSERTAR MARCACIÓN */
     await client.query(
       `
       INSERT INTO marcaciones (
@@ -267,17 +262,14 @@ for (const geo of geos.rows) {
         hora,
         gerencia,
         comentario,
-        sector_id,
         created_at
       )
       VALUES (
         $1,$2,$3,$4,$5,
         (now() AT TIME ZONE 'America/Lima')::date,
         (now() AT TIME ZONE 'America/Lima')::time,
-
-        $6,$7,$8,
+        $6,$7,
         now()
-
       )
       `,
       [
@@ -287,13 +279,13 @@ for (const geo of geos.rows) {
         ubicacion_id,
         turno_id,
         gerencia,
-        comentario,
-        sector_id
+        comentario
       ]
     );
 
     await client.query("COMMIT");
     res.json({ ok: true });
+
   } catch (error) {
     await client.query("ROLLBACK");
     console.error("❌ Error en /marcar:", error.message);
@@ -303,38 +295,6 @@ for (const geo of geos.rows) {
   }
 });
 
-/* =====================================================
-   ⏱ ÚLTIMA MARCACIÓN (UTC – AUDITORÍA)
-===================================================== */
-app.get("/ultima-marcacion/:dni", async (req, res) => {
-  const { dni } = req.params;
-
-  try {
-    const result = await pool.query(
-      `
-      SELECT created_at
-      FROM marcaciones
-      WHERE personal_dni = $1
-      ORDER BY created_at DESC
-      LIMIT 1
-      `,
-      [dni]
-    );
-
-    if (result.rows.length === 0) {
-      return res.json({ existe: false });
-    }
-
-    res.json({
-      existe: true,
-      timestamp: result.rows[0].created_at,
-    });
-  } catch (error) {
-    console.error("❌ Error última marcación:", error);
-
-    res.status(500).json({ error: "Error consultando última marcación" });
-  }
-});
 
 /* =====================================================
    📋 LISTAR MARCACIONES
@@ -824,6 +784,7 @@ app.get("/marcaciones-actuales", async (req, res) => {
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
 });
+
 
 
 
