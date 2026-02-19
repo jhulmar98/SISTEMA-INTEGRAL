@@ -11,7 +11,29 @@ app.use(express.json());
 app.use(webRoutes);
 
 const PORT = process.env.PORT || 3000;
+/* =====================================================
+   📐 FUNCIÓN DETECCIÓN PUNTO EN POLÍGONO
+===================================================== */
+function pointInPolygon(lat, lng, polygon) {
+  let inside = false;
 
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].lng;
+    const yi = polygon[i].lat;
+    const xj = polygon[j].lng;
+    const yj = polygon[j].lat;
+
+    const intersect =
+      yi > lat !== yj > lat &&
+      lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
+
+    if (intersect) inside = !inside;
+  }
+
+  return inside;
+}
+
+ 
 /* =====================================================
    🧪 TEST DB / HORA SERVIDOR (UTC)
 ===================================================== */
@@ -191,6 +213,35 @@ app.post("/marcar", async (req, res) => {
 
     const ubicacion_id = ub.rows[0].id;
 
+   let sector_id = null;
+
+// 1️⃣ Obtener geocercas activas
+const geos = await client.query(
+  `SELECT id FROM geocercas WHERE muni_id = $1 AND activo = true`,
+  [muni_id]
+);
+
+// 2️⃣ Verificar si el punto cae dentro de alguna geocerca
+for (const geo of geos.rows) {
+
+  const puntos = await client.query(
+    `SELECT lat, lng
+     FROM geocerca_puntos
+     WHERE geocerca_id = $1
+     ORDER BY orden`,
+    [geo.id]
+  );
+
+  const poligono = puntos.rows;
+
+  if (pointInPolygon(lat, lng, poligono)) {
+    sector_id = geo.id;
+    break;
+  }
+}
+
+     
+
     /* 5️⃣ OBTENER SUPERVISOR */
     const sup = await client.query(
       `
@@ -216,6 +267,7 @@ app.post("/marcar", async (req, res) => {
         hora,
         gerencia,
         comentario,
+        sector_id,
         created_at
       )
       VALUES (
@@ -223,7 +275,7 @@ app.post("/marcar", async (req, res) => {
         (now() AT TIME ZONE 'America/Lima')::date,
         (now() AT TIME ZONE 'America/Lima')::time,
 
-        $6,$7,
+        $6,$7,$8,
         now()
 
       )
@@ -236,6 +288,7 @@ app.post("/marcar", async (req, res) => {
         turno_id,
         gerencia,
         comentario,
+        sector_id
       ]
     );
 
@@ -771,6 +824,7 @@ app.get("/marcaciones-actuales", async (req, res) => {
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
 });
+
 
 
 
