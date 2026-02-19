@@ -224,7 +224,7 @@ app.post("/marcar", async (req, res) => {
         (now() AT TIME ZONE 'America/Lima')::time,
 
         $6,$7,
-        (now() AT TIME ZONE 'America/Lima')
+        now()
 
       )
       `,
@@ -771,6 +771,7 @@ app.get("/marcaciones-actuales", async (req, res) => {
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
 });
+
 
 
 
