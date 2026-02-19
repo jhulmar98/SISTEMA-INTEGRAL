@@ -714,6 +714,7 @@ app.get("/marcaciones-actuales", async (req, res) => {
 
         u.lat                        AS lat,
         u.lng                        AS lng,
+        u.sector                     AS sector,
 
         t.codigo_turno               AS codigo_turno   -- 🔥 IMPORTANTE
 
@@ -784,6 +785,7 @@ app.get("/marcaciones-actuales", async (req, res) => {
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
 });
+
 
 
 
