@@ -484,12 +484,8 @@ app.post("/patrullaje", async (req, res) => {
     res.status(500).json({ error: "Error registrando patrullaje" });
   }
 });
-
-/* =====================================================
-   📡 SUPERVISORES ACTIVOS (ÚLTIMA UBICACIÓN)
-===================================================== */
 app.get("/supervisores-activos", async (req, res) => {
-  const { muni_id } = req.query;
+  const { muni_id, gerencia } = req.query;
 
   if (!muni_id) {
     return res.status(400).json({ error: "muni_id requerido" });
@@ -497,8 +493,7 @@ app.get("/supervisores-activos", async (req, res) => {
 
   try {
 
-    const result = await pool.query(
-      `
+    let query = `
       SELECT DISTINCT ON (ps.supervisor_id)
         ps.supervisor_id,
         s.nombre,
@@ -506,23 +501,39 @@ app.get("/supervisores-activos", async (req, res) => {
         ps.lng,
         ps.created_at,
         t.codigo_turno,
-
         CASE
           WHEN ps.created_at > (now() AT TIME ZONE 'America/Lima') - interval '2 minutes'
           THEN true
           ELSE false
         END AS activo
-
       FROM patrullajes_supervisor ps
       JOIN supervisores s ON s.id = ps.supervisor_id
       LEFT JOIN turnos t ON t.id = ps.turno_id
-
       WHERE ps.muni_id = $1
+    `;
 
+    const values = [muni_id];
+    let idx = 2;
+
+    // 🔥 FILTRO POR GERENCIA (si viene)
+    if (gerencia && gerencia.trim() !== "") {
+      query += `
+        AND ps.supervisor_id IN (
+          SELECT DISTINCT supervisor_id
+          FROM marcaciones
+          WHERE muni_id = $1
+            AND TRIM(gerencia) = TRIM($${idx})
+        )
+      `;
+      values.push(gerencia.trim());
+      idx++;
+    }
+
+    query += `
       ORDER BY ps.supervisor_id, ps.created_at DESC
-      `,
-      [muni_id]
-    );
+    `;
+
+    const result = await pool.query(query, values);
 
     res.json(result.rows);
 
@@ -531,6 +542,7 @@ app.get("/supervisores-activos", async (req, res) => {
     res.status(500).json({ error: "Error del servidor" });
   }
 });
+
 
 /* =====================================================
    🗺 RECORRIDO DEL SUPERVISOR (SOLO HOY)
@@ -737,6 +749,7 @@ app.get("/marcaciones-actuales", async (req, res) => {
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
 });
+
 
 
 
