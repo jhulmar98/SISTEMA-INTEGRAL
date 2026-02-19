@@ -543,12 +543,8 @@ app.get("/supervisores-activos", async (req, res) => {
   }
 });
 
-
-/* =====================================================
-   🗺 RECORRIDO DEL SUPERVISOR (SOLO HOY)
-===================================================== */
 app.get("/recorrido-supervisor", async (req, res) => {
-  const { muni_id, supervisor_id } = req.query;
+  const { muni_id, supervisor_id, gerencia } = req.query;
 
   if (!muni_id || !supervisor_id) {
     return res.status(400).json({
@@ -558,18 +554,38 @@ app.get("/recorrido-supervisor", async (req, res) => {
 
   try {
 
-    const result = await pool.query(
-      `
-      SELECT lat, lng, created_at
-      FROM patrullajes_supervisor
-      WHERE muni_id = $1
-        AND supervisor_id = $2
-        AND (created_at AT TIME ZONE 'America/Lima')::date =
+    let query = `
+      SELECT ps.lat, ps.lng, ps.created_at
+      FROM patrullajes_supervisor ps
+      WHERE ps.muni_id = $1
+        AND ps.supervisor_id = $2
+        AND (ps.created_at AT TIME ZONE 'America/Lima')::date =
             (now() AT TIME ZONE 'America/Lima')::date
-      ORDER BY created_at ASC
-      `,
-      [muni_id, supervisor_id]
-    );
+    `;
+
+    const values = [muni_id, supervisor_id];
+    let idx = 3;
+
+    // 🔥 FILTRO POR GERENCIA (si viene)
+    if (gerencia && gerencia.trim() !== "") {
+      query += `
+        AND ps.supervisor_id IN (
+          SELECT DISTINCT supervisor_id
+          FROM marcaciones
+          WHERE muni_id = $1
+            AND TRIM(gerencia) = TRIM($${idx})
+            AND fecha = (now() AT TIME ZONE 'America/Lima')::date
+        )
+      `;
+      values.push(gerencia.trim());
+      idx++;
+    }
+
+    query += `
+      ORDER BY ps.created_at ASC
+    `;
+
+    const result = await pool.query(query, values);
 
     res.json(result.rows);
 
@@ -578,6 +594,8 @@ app.get("/recorrido-supervisor", async (req, res) => {
     res.status(500).json({ error: "Error del servidor" });
   }
 });
+
+
 
 /* =====================================================
    ⏰ OBTENER TURNO ACTUAL (PARA WEB)
@@ -749,6 +767,7 @@ app.get("/marcaciones-actuales", async (req, res) => {
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
 });
+
 
 
 
