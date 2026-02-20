@@ -437,15 +437,14 @@ app.post("/marcar-local", async (req, res) => {
 app.post("/patrullaje", async (req, res) => {
   console.log("🚓 PATRULLAJE RECIBIDO:", req.body);
 
-  const { muni_id, supervisor_id, lat, lng } = req.body;
+  const { muni_id, supervisor_id, lat, lng, gerencia, cargo } = req.body;
 
-  // Validación correcta (NO usar !variable)
   if (muni_id == null || supervisor_id == null || lat == null || lng == null) {
     return res.status(400).json({ error: "Datos incompletos" });
   }
 
   try {
-    /* 1️⃣ DETERMINAR TURNO ACTIVO */
+
     const turno = await pool.query(
       `
       SELECT id
@@ -455,17 +454,14 @@ app.post("/patrullaje", async (req, res) => {
           (hora_inicio < hora_fin AND 
              (now() AT TIME ZONE 'America/Lima')::time 
                BETWEEN hora_inicio AND hora_fin)
-
           OR
-          
-            (hora_inicio > hora_fin AND 
+          (hora_inicio > hora_fin AND 
              (
                (now() AT TIME ZONE 'America/Lima')::time >= hora_inicio
                OR
                (now() AT TIME ZONE 'America/Lima')::time <= hora_fin
              )
-            )
-
+          )
         )
       LIMIT 1
       `,
@@ -478,7 +474,6 @@ app.post("/patrullaje", async (req, res) => {
 
     const turno_id = turno.rows[0].id;
 
-    /* 2️⃣ INSERTAR TRACKING */
     await pool.query(
       `
       INSERT INTO patrullajes_supervisor (
@@ -487,11 +482,21 @@ app.post("/patrullaje", async (req, res) => {
         turno_id,
         lat,
         lng,
+        gerencia,
+        cargo,
         created_at
       )
-      VALUES ($1,$2,$3,$4,$5, (now() AT TIME ZONE 'America/Lima'))
+      VALUES ($1,$2,$3,$4,$5,$6,$7, (now() AT TIME ZONE 'America/Lima'))
       `,
-      [muni_id, supervisor_id, turno_id, lat, lng]
+      [
+        muni_id,
+        supervisor_id,
+        turno_id,
+        lat,
+        lng,
+        gerencia,
+        cargo
+      ]
     );
 
     res.json({ ok: true });
@@ -501,6 +506,8 @@ app.post("/patrullaje", async (req, res) => {
     res.status(500).json({ error: "Error registrando patrullaje" });
   }
 });
+
+
 app.get("/supervisores-activos", async (req, res) => {
   const { muni_id, gerencia } = req.query;
 
@@ -764,6 +771,7 @@ app.get("/marcaciones-actuales", async (req, res) => {
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
 });
+
 
 
 
