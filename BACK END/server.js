@@ -518,6 +518,7 @@ app.get("/supervisores-activos", async (req, res) => {
         ps.lng,
         ps.created_at,
         t.codigo_turno,
+        
         CASE
           WHEN ps.created_at > (now() AT TIME ZONE 'America/Lima') - interval '2 minutes'
           THEN true
@@ -669,9 +670,7 @@ app.get("/marcaciones-actuales", async (req, res) => {
 
   try {
 
-    /* =====================================================
-       1️⃣ Resolver turno_id si viene turno=T1/T2/T3
-    ===================================================== */
+    /* 1️⃣ Resolver turno_id */
     let turno_id = null;
 
     if (turno && turno !== "TODO" && turno !== "Todo") {
@@ -691,9 +690,7 @@ app.get("/marcaciones-actuales", async (req, res) => {
       }
     }
 
-    /* =====================================================
-       2️⃣ Query base
-    ===================================================== */
+    /* 2️⃣ Query base */
     let query = `
       SELECT DISTINCT ON (m.personal_dni)
 
@@ -716,10 +713,13 @@ app.get("/marcaciones-actuales", async (req, res) => {
         u.lng                        AS lng,
         u.sector                     AS sector,
 
-        t.codigo_turno               AS codigo_turno   -- 🔥 IMPORTANTE
+        t.codigo_turno               AS codigo_turno,
+
+        COUNT(*) OVER (
+          PARTITION BY m.personal_dni
+        ) AS total_marcaciones
 
       FROM marcaciones m
-
       INNER JOIN ubicaciones u ON u.id = m.ubicacion_id
       LEFT JOIN personal p     ON p.dni = m.personal_dni
       LEFT JOIN supervisores s ON s.id  = m.supervisor_id
@@ -732,44 +732,26 @@ app.get("/marcaciones-actuales", async (req, res) => {
     const values = [muni_id, fecha];
     let idx = 3;
 
-    /* =====================================================
-       3️⃣ Filtro turno si aplica
-    ===================================================== */
+    /* 3️⃣ Filtro turno */
     if (turno_id) {
       query += ` AND m.turno_id = $${idx}`;
       values.push(turno_id);
       idx++;
     }
 
-    /* =====================================================
-       4️⃣ Filtro gerencia si aplica
-    ===================================================== */
+    /* 4️⃣ Filtro gerencia */
     if (gerencia && gerencia.trim() !== "") {
       query += ` AND TRIM(m.gerencia) = TRIM($${idx})`;
       values.push(gerencia.trim());
       idx++;
     }
 
-    /* =====================================================
-       5️⃣ DISTINCT ON requiere ORDER BY coherente
-    ===================================================== */
+    /* 5️⃣ ORDER BY obligatorio para DISTINCT ON */
     query += `
       ORDER BY m.personal_dni, m.created_at DESC
     `;
 
     const result = await pool.query(query, values);
-
-    /* =====================================================
-       6️⃣ Logs de auditoría profesional
-    ===================================================== */
-    console.log("📊 /marcaciones-actuales", {
-      muni_id,
-      fecha,
-      turno: turno || null,
-      turno_id,
-      gerencia: gerencia || null,
-      filas: result.rows.length,
-    });
 
     res.json(result.rows);
 
@@ -778,13 +760,11 @@ app.get("/marcaciones-actuales", async (req, res) => {
     res.status(500).json({ error: "Error del servidor" });
   }
 });
-
-
-
 /* ===================================================== */
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
 });
+
 
 
 
