@@ -507,7 +507,6 @@ app.post("/patrullaje", async (req, res) => {
   }
 });
 
-
 app.get("/supervisores-activos", async (req, res) => {
   const { muni_id, gerencia } = req.query;
 
@@ -521,11 +520,12 @@ app.get("/supervisores-activos", async (req, res) => {
       SELECT DISTINCT ON (ps.supervisor_id)
         ps.supervisor_id,
         s.nombre,
+        s.gerencia,
+        s.cargo,
         ps.lat,
         ps.lng,
         ps.created_at,
         t.codigo_turno,
-        
         CASE
           WHEN ps.created_at > (now() AT TIME ZONE 'America/Lima') - interval '2 minutes'
           THEN true
@@ -540,16 +540,8 @@ app.get("/supervisores-activos", async (req, res) => {
     const values = [muni_id];
     let idx = 2;
 
-    // 🔥 FILTRO POR GERENCIA (si viene)
     if (gerencia && gerencia.trim() !== "") {
-      query += `
-        AND ps.supervisor_id IN (
-          SELECT DISTINCT supervisor_id
-          FROM marcaciones
-          WHERE muni_id = $1
-            AND TRIM(gerencia) = TRIM($${idx})
-        )
-      `;
+      query += ` AND TRIM(s.gerencia) = TRIM($${idx})`;
       values.push(gerencia.trim());
       idx++;
     }
@@ -582,6 +574,7 @@ app.get("/recorrido-supervisor", async (req, res) => {
     let query = `
       SELECT ps.lat, ps.lng, ps.created_at
       FROM patrullajes_supervisor ps
+      JOIN supervisores s ON s.id = ps.supervisor_id
       WHERE ps.muni_id = $1
         AND ps.supervisor_id = $2
         AND (ps.created_at AT TIME ZONE 'America/Lima')::date =
@@ -591,24 +584,13 @@ app.get("/recorrido-supervisor", async (req, res) => {
     const values = [muni_id, supervisor_id];
     let idx = 3;
 
-    // 🔥 FILTRO POR GERENCIA (si viene)
     if (gerencia && gerencia.trim() !== "") {
-      query += `
-        AND ps.supervisor_id IN (
-          SELECT DISTINCT supervisor_id
-          FROM marcaciones
-          WHERE muni_id = $1
-            AND TRIM(gerencia) = TRIM($${idx})
-            AND fecha = (now() AT TIME ZONE 'America/Lima')::date
-        )
-      `;
+      query += ` AND TRIM(s.gerencia) = TRIM($${idx})`;
       values.push(gerencia.trim());
       idx++;
     }
 
-    query += `
-      ORDER BY ps.created_at ASC
-    `;
+    query += ` ORDER BY ps.created_at ASC`;
 
     const result = await pool.query(query, values);
 
@@ -771,6 +753,7 @@ app.get("/marcaciones-actuales", async (req, res) => {
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
 });
+
 
 
 
