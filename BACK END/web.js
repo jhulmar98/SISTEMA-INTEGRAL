@@ -276,6 +276,8 @@ router.put("/cambiar-password/:id", async (req, res) => {
 });
 
 
+
+
 /* =====================================================
    🗺️ LISTAR GEOCERCAS
 ===================================================== */
@@ -478,8 +480,137 @@ router.delete("/geocercas/:id", async (req, res) => {
 
 });
 
+/* =====================================================
+   🏬 LISTAR LOCALES
+===================================================== */
+router.get("/locales", async (req, res) => {
+
+  const { muni_id } = req.query;
+
+  if (!muni_id) {
+    return res.status(400).json({ error: "muni_id requerido" });
+  }
+
+  try {
+
+    const result = await pool.query(
+      `
+      SELECT id,
+             codigo_local,
+             nombre_local,
+             direccion,
+             sector,
+             lat,
+             lng,
+             activo,
+             creado_en
+      FROM locales
+      WHERE muni_id = $1
+        AND activo = true
+      ORDER BY id DESC
+      `,
+      [muni_id]
+    );
+
+    res.json(result.rows);
+
+  } catch (error) {
+    console.error("❌ Error listando locales:", error);
+    res.status(500).json({ error: "Error del servidor" });
+  }
+
+});
+/* =====================================================
+   ➕ CREAR LOCAL
+===================================================== */
+router.post("/locales", async (req, res) => {
+
+  const {
+    muni_id,
+    codigo_local,
+    nombre_local,
+    direccion,
+    sector,
+    lat = null,
+    lng = null
+  } = req.body;
+
+  if (!muni_id || !codigo_local || !nombre_local || !direccion) {
+    return res.status(400).json({ error: "Datos incompletos" });
+  }
+
+  try {
+
+    const result = await pool.query(
+      `
+      INSERT INTO locales (
+        muni_id,
+        codigo_local,
+        nombre_local,
+        direccion,
+        sector,
+        lat,
+        lng
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7)
+      RETURNING id
+      `,
+      [
+        muni_id,
+        codigo_local,
+        nombre_local,
+        direccion,
+        sector,
+        lat,
+        lng
+      ]
+    );
+
+    res.json({ ok: true, id: result.rows[0].id });
+
+  } catch (error) {
+
+    if (error.code === "23505") {
+      return res.status(400).json({
+        error: "Código de local ya existe en esta municipalidad"
+      });
+    }
+
+    console.error("❌ Error creando local:", error);
+    res.status(500).json({ error: "Error del servidor" });
+  }
+
+});
+/* =====================================================
+   🗑 DESACTIVAR LOCAL
+===================================================== */
+router.delete("/locales/:id", async (req, res) => {
+
+  const { id } = req.params;
+
+  try {
+
+    await pool.query(
+      `
+      UPDATE locales
+      SET activo = false
+      WHERE id = $1
+      `,
+      [id]
+    );
+
+    res.json({ ok: true });
+
+  } catch (error) {
+    console.error("❌ Error desactivando local:", error);
+    res.status(500).json({ error: "Error del servidor" });
+  }
+
+});
+
 
 module.exports = router;
+
 
 
 
