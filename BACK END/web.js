@@ -608,8 +608,42 @@ router.delete("/locales/:id", async (req, res) => {
 
 });
 
+/* =====================================================
+   🏬 ÚLTIMA MARCACIÓN POR LOCAL (1 por codigo_local)
+===================================================== */
+router.get("/marcaciones-locales-actuales", async (req, res) => {
+  const { muni_id } = req.query;
+
+  if (!muni_id) {
+    return res.status(400).json({ error: "muni_id requerido" });
+  }
+
+  try {
+    const result = await pool.query(
+      `
+      SELECT DISTINCT ON (ml.codigo_local)
+        ml.codigo_local,
+        ml.nombre_local,
+        ml.direccion,
+        ml.lat,
+        ml.lng,
+        ml.created_at
+      FROM marcaciones_locales ml
+      WHERE ml.muni_id = $1
+      ORDER BY ml.codigo_local, ml.created_at DESC
+      `,
+      [muni_id]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error("❌ Error marcaciones-locales-actuales:", error);
+    res.status(500).json({ error: "Error del servidor" });
+  }
+});
 
 module.exports = router;
+
 
 
 
