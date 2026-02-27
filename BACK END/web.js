@@ -52,7 +52,7 @@ router.post("/login-web", async (req, res) => {
 
     const muni = await pool.query(
       `
-      SELECT id, nombre
+      SELECT id, nombre, codigo
       FROM municipalidades
       WHERE codigo = $1
         AND activo = true
@@ -93,6 +93,7 @@ router.post("/login-web", async (req, res) => {
       ok: true,
       muni_id,
       muni_nombre,
+      muni_codigo: muni.rows[0].codigo,
       nombre: user.nombre,
       correo: user.correo,
       rol: user.rol
@@ -643,6 +644,7 @@ router.get("/marcaciones-locales-actuales", async (req, res) => {
 });
 
 module.exports = router;
+
 
 
 
