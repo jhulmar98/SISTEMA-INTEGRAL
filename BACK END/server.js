@@ -644,6 +644,7 @@ app.get("/turno-actual", async (req, res) => {
   }
 });
 
+
 /* =====================================================
    📍 MARCACIONES ACTUALES (ÚLTIMO ESCANEO POR PERSONA)
    - 1 fila por personal_dni (último created_at)
@@ -749,10 +750,146 @@ app.get("/marcaciones-actuales", async (req, res) => {
     res.status(500).json({ error: "Error del servidor" });
   }
 });
+
+/* =====================================================
+   📡 INICIAR TRANSMISIÓN EN VIVO
+===================================================== */
+   app.post("/iniciar-transmision", async (req, res) => {
+   
+     const {
+       muni_id,
+       supervisor_dni,
+       nombre_supervisor,
+       gerencia,
+       lat,
+       lng
+     } = req.body;
+   
+     if (!muni_id || !supervisor_dni || !lat || !lng) {
+       return res.status(400).json({ error: "Datos incompletos" });
+     }
+   
+     try {
+   
+       const stream_key = "live_" + Date.now();
+   
+       const result = await pool.query(
+         `
+         INSERT INTO transmisiones_supervisor (
+           muni_id,
+           supervisor_dni,
+           nombre_supervisor,
+           gerencia,
+           lat,
+           lng,
+           fecha,
+           hora,
+           stream_key
+         )
+         VALUES (
+           $1,$2,$3,$4,$5,$6,
+           (now() AT TIME ZONE 'America/Lima')::date,
+           (now() AT TIME ZONE 'America/Lima')::time,
+           $7
+         )
+         RETURNING id
+         `,
+         [
+           muni_id,
+           supervisor_dni,
+           nombre_supervisor,
+           gerencia,
+           lat,
+           lng,
+           stream_key
+         ]
+       );
+   
+       res.json({
+         ok: true,
+         transmision_id: result.rows[0].id,
+         stream_key,
+         stream_url: `rtmp://tu-servidor/live/${stream_key}`
+       });
+   
+     } catch (error) {
+       console.error("❌ Error iniciar transmisión:", error);
+       res.status(500).json({ error: "Error iniciando transmisión" });
+     }
+   });
+   /* =====================================================
+   📡 FINALIZAR TRANSMISIÓN
+===================================================== */
+   app.post("/finalizar-transmision", async (req, res) => {
+   
+     const { stream_key } = req.body;
+   
+     if (!stream_key) {
+       return res.status(400).json({ error: "stream_key requerido" });
+     }
+   
+     try {
+   
+       await pool.query(
+         `
+         UPDATE transmisiones_supervisor
+         SET estado = 'FINALIZADO'
+         WHERE stream_key = $1
+         `,
+         [stream_key]
+       );
+   
+       res.json({ ok: true });
+   
+     } catch (error) {
+       console.error("❌ Error finalizar transmisión:", error);
+       res.status(500).json({ error: "Error finalizando transmisión" });
+     }
+   });
+   /* =====================================================
+   📡 TRANSMISIONES ACTIVAS
+   ===================================================== */
+   app.get("/transmisiones-activas", async (req, res) => {
+   
+     const { muni_id } = req.query;
+   
+     if (!muni_id) {
+       return res.status(400).json({ error: "muni_id requerido" });
+     }
+   
+     try {
+   
+       const result = await pool.query(
+         `
+         SELECT
+           id,
+           supervisor_dni,
+           nombre_supervisor,
+           gerencia,
+           lat,
+           lng,
+           stream_key,
+           created_at
+         FROM transmisiones_supervisor
+         WHERE muni_id = $1
+           AND estado = 'ACTIVO'
+         ORDER BY created_at DESC
+         `,
+         [muni_id]
+       );
+   
+       res.json(result.rows);
+   
+     } catch (error) {
+       console.error("❌ Error transmisiones:", error);
+       res.status(500).json({ error: "Error del servidor" });
+     }
+   });
 /* ===================================================== */
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
 });
+
 
 
 
