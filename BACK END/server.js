@@ -823,31 +823,26 @@ app.get("/marcaciones-actuales", async (req, res) => {
    📡 FINALIZAR TRANSMISIÓN
 ===================================================== */
    app.post("/finalizar-transmision", async (req, res) => {
-   
+
      const { stream_key } = req.body;
    
-     if (!stream_key) {
-       return res.status(400).json({ error: "stream_key requerido" });
-     }
+     console.log("STREAM KEY:", stream_key);
    
-     try {
+     const result = await pool.query(
+       `
+       UPDATE transmisiones_supervisor
+       SET estado = 'FINALIZADO',
+           finished_at = now()
+       WHERE stream_key = $1
+       RETURNING id
+       `,
+       [stream_key]
+     );
    
-       await pool.query(
-         `
-         UPDATE transmisiones_supervisor
-         SET estado = 'FINALIZADO',
-            finished_at = now()
-         WHERE stream_key = $1
-         `,
-         [stream_key]
-       );
+     console.log("FILAS ACTUALIZADAS:", result.rowCount);
    
-       res.json({ ok: true });
+     res.json({ ok: true });
    
-     } catch (error) {
-       console.error("❌ Error finalizar transmisión:", error);
-       res.status(500).json({ error: "Error finalizando transmisión" });
-     }
    });
    /* =====================================================
    📡 TRANSMISIONES ACTIVAS
