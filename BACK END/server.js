@@ -866,41 +866,50 @@ app.get("/marcaciones-actuales", async (req, res) => {
    📡 TRANSMISIONES ACTIVAS
    ===================================================== */
    app.get("/transmisiones-activas", async (req, res) => {
-   
-     const { muni_id } = req.query;
-   
-     if (!muni_id) {
-       return res.status(400).json({ error: "muni_id requerido" });
-     }
-   
-     try {
-   
-       const result = await pool.query(
-         `
-         SELECT
-           id,
-           supervisor_dni,
-           nombre_supervisor,
-           gerencia,
-           lat,
-           lng,
-           stream_key,
-           created_at
-         FROM transmisiones_supervisor
-         WHERE muni_id = $1
-           AND estado = 'ACTIVO'
-         ORDER BY created_at DESC
-         `,
-         [muni_id]
-       );
-   
-       res.json(result.rows);
-   
-     } catch (error) {
-       console.error("❌ Error transmisiones:", error);
-       res.status(500).json({ error: "Error del servidor" });
-     }
-   });
+
+  const { muni_id } = req.query;
+
+  if (!muni_id) {
+    return res.status(400).json({ error: "muni_id requerido" });
+  }
+
+  try {
+
+    // 🔴 CERRAR TRANSMISIONES ABANDONADAS
+    await pool.query(`
+      UPDATE transmisiones_supervisor
+      SET estado = 'FINALIZADO',
+          finished_at = now()
+      WHERE estado = 'ACTIVO'
+      AND created_at < now() - interval '5 minutes'
+    `);
+
+    const result = await pool.query(
+      `
+      SELECT
+        id,
+        supervisor_dni,
+        nombre_supervisor,
+        gerencia,
+        lat,
+        lng,
+        stream_key,
+        created_at
+      FROM transmisiones_supervisor
+      WHERE muni_id = $1
+        AND estado = 'ACTIVO'
+      ORDER BY created_at DESC
+      `,
+      [muni_id]
+    );
+
+    res.json(result.rows);
+
+  } catch (error) {
+    console.error("❌ Error transmisiones:", error);
+    res.status(500).json({ error: "Error del servidor" });
+  }
+});
 
 /* =====================================================
    📜 HISTORIAL DE TRANSMISIONES DEL DÍA
