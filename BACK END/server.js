@@ -776,22 +776,24 @@ app.get("/marcaciones-actuales", async (req, res) => {
        const result = await pool.query(
          `
          INSERT INTO transmisiones_supervisor (
-           muni_id,
-           supervisor_dni,
-           nombre_supervisor,
-           gerencia,
-           lat,
-           lng,
-           fecha,
-           hora,
-           stream_key
-         )
-         VALUES (
-           $1,$2,$3,$4,$5,$6,
-           (now() AT TIME ZONE 'America/Lima')::date,
-           (now() AT TIME ZONE 'America/Lima')::time,
-           $7
-         )
+              muni_id,
+              supervisor_dni,
+              nombre_supervisor,
+              gerencia,
+              lat,
+              lng,
+              fecha,
+              hora,
+              stream_key,
+              estado
+            )
+            VALUES (
+              $1,$2,$3,$4,$5,$6,
+              (now() AT TIME ZONE 'America/Lima')::date,
+              (now() AT TIME ZONE 'America/Lima')::time,
+              $7,
+              'ACTIVO'
+            )
          RETURNING id
          `,
          [
@@ -833,7 +835,8 @@ app.get("/marcaciones-actuales", async (req, res) => {
        await pool.query(
          `
          UPDATE transmisiones_supervisor
-         SET estado = 'FINALIZADO'
+         SET estado = 'FINALIZADO',
+            finished_at = now()
          WHERE stream_key = $1
          `,
          [stream_key]
@@ -885,6 +888,57 @@ app.get("/marcaciones-actuales", async (req, res) => {
        res.status(500).json({ error: "Error del servidor" });
      }
    });
+
+/* =====================================================
+   📜 HISTORIAL DE TRANSMISIONES DEL DÍA
+===================================================== */
+app.get("/transmisiones-hoy", async (req, res) => {
+
+  const { muni_id, gerencia } = req.query;
+
+  if (!muni_id) {
+    return res.status(400).json({ error: "muni_id requerido" });
+  }
+
+  try {
+
+    let query = `
+      SELECT
+        id,
+        nombre_supervisor,
+        gerencia,
+        stream_key,
+        created_at,
+        finished_at,
+        estado
+      FROM transmisiones_supervisor
+      WHERE muni_id = $1
+        AND estado = 'FINALIZADO'
+        AND (created_at AT TIME ZONE 'America/Lima')::date =
+            (now() AT TIME ZONE 'America/Lima')::date
+    `;
+
+    const values = [muni_id];
+    let idx = 2;
+
+    if (gerencia && gerencia !== "ALL") {
+      query += ` AND gerencia = $${idx}`;
+      values.push(gerencia);
+      idx++;
+    }
+
+    query += ` ORDER BY created_at DESC`;
+
+    const result = await pool.query(query, values);
+
+    res.json(result.rows);
+
+  } catch (error) {
+    console.error("❌ Error historial transmisiones:", error);
+    res.status(500).json({ error: "Error del servidor" });
+  }
+
+});
 /* ===================================================== */
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
