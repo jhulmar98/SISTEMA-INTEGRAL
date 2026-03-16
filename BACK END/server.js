@@ -822,27 +822,45 @@ app.get("/marcaciones-actuales", async (req, res) => {
    /* =====================================================
    📡 FINALIZAR TRANSMISIÓN
 ===================================================== */
-   app.post("/finalizar-transmision", async (req, res) => {
-
-     const { stream_key } = req.body;
+ app.post("/finalizar-transmision", async (req, res) => {
+     try {
    
-     console.log("STREAM KEY:", stream_key);
+       const { stream_key } = req.body;
    
-     const result = await pool.query(
-       `
-       UPDATE transmisiones_supervisor
-       SET estado = 'FINALIZADO',
-           finished_at = now()
-       WHERE stream_key = $1
-       RETURNING id
-       `,
-       [stream_key]
-     );
+       if (!stream_key) {
+         return res.status(400).json({
+           ok: false,
+           error: "stream_key requerido"
+         });
+       }
    
-     console.log("FILAS ACTUALIZADAS:", result.rowCount);
+       const result = await pool.query(
+         `
+         UPDATE transmisiones_supervisor
+         SET estado = 'FINALIZADO',
+             finished_at = (now() AT TIME ZONE 'America/Lima')
+         WHERE stream_key = $1
+         RETURNING id
+         `,
+         [stream_key]
+       );
    
-     res.json({ ok: true });
+       if (result.rowCount === 0) {
+         return res.status(404).json({
+           ok: false,
+           error: "Transmisión no encontrada"
+         });
+       }
    
+       res.json({
+         ok: true,
+         transmision_id: result.rows[0].id
+       });
+   
+     } catch (error) {
+       console.error("❌ finalizar-transmision:", error);
+       res.status(500).json({ error: "Error finalizando transmisión" });
+     }
    });
    /* =====================================================
    📡 TRANSMISIONES ACTIVAS
