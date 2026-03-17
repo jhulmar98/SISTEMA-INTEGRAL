@@ -750,139 +750,136 @@ app.get("/marcaciones-actuales", async (req, res) => {
     res.status(500).json({ error: "Error del servidor" });
   }
 });
-
 /* =====================================================
-   📡 INICIAR TRANSMISIÓN EN VIVO
+   📡 INICIAR TRANSMISIÓN
 ===================================================== */
-   app.post("/iniciar-transmision", async (req, res) => {
-   
-     const {
-       muni_id,
-       supervisor_dni,
-       nombre_supervisor,
-       gerencia,
-       lat,
-       lng
-     } = req.body;
-   
-     if (!muni_id || !supervisor_dni || !lat || !lng) {
-       return res.status(400).json({ error: "Datos incompletos" });
-     }
-   
-     try {
-   
-       const stream_key = "live_" + Date.now();
-   
-       const result = await pool.query(
-         `
-         INSERT INTO transmisiones_supervisor (
-              muni_id,
-              supervisor_dni,
-              nombre_supervisor,
-              gerencia,
-              lat,
-              lng,
-              fecha,
-              hora,
-              stream_key,
-              estado
-            )
-            VALUES (
-              $1,$2,$3,$4,$5,$6,
-              (now() AT TIME ZONE 'America/Lima')::date,
-              (now() AT TIME ZONE 'America/Lima')::time,
-              $7,
-              'ACTIVO'
-            )
-         RETURNING id
-         `,
-         [
-           muni_id,
-           supervisor_dni,
-           nombre_supervisor,
-           gerencia,
-           lat,
-           lng,
-           stream_key
-         ]
-       );
-   
-       res.json({
-         ok: true,
-         transmision_id: result.rows[0].id,
-         stream_key,
-         stream_url: `rtmp://tu-servidor/live/${stream_key}`
-       });
-   
-     } catch (error) {
-       console.error("❌ Error iniciar transmisión:", error);
-       res.status(500).json({ error: "Error iniciando transmisión" });
-     }
-   });
-   /* =====================================================
+app.post("/iniciar-transmision", async (req, res) => {
+  try {
+    const {
+      muni_id,
+      supervisor_dni,
+      nombre_supervisor,
+      gerencia,
+      lat,
+      lng
+    } = req.body;
+
+    if (!muni_id || !supervisor_dni || !lat || !lng) {
+      return res.status(400).json({
+        ok: false,
+        error: "Datos incompletos"
+      });
+    }
+
+    const stream_key = "live_" + Date.now();
+
+    const result = await pool.query(
+      `
+      INSERT INTO transmisiones_supervisor (
+        muni_id,
+        supervisor_dni,
+        nombre_supervisor,
+        gerencia,
+        lat,
+        lng,
+        fecha,
+        hora,
+        stream_key,
+        estado
+      )
+      VALUES (
+        $1,$2,$3,$4,$5,$6,
+        (now() AT TIME ZONE 'America/Lima')::date,
+        (now() AT TIME ZONE 'America/Lima')::time,
+        $7,
+        'ACTIVO'
+      )
+      RETURNING id
+      `,
+      [
+        muni_id,
+        supervisor_dni,
+        nombre_supervisor,
+        gerencia,
+        lat,
+        lng,
+        stream_key
+      ]
+    );
+
+    res.json({
+      ok: true,
+      transmision_id: result.rows[0].id,
+      stream_key: stream_key
+    });
+
+  } catch (error) {
+    console.error("❌ iniciar-transmision:", error);
+    res.status(500).json({
+      ok: false,
+      error: "Error iniciando transmisión"
+    });
+  }
+});
+/* =====================================================
    📡 FINALIZAR TRANSMISIÓN
 ===================================================== */
- app.post("/finalizar-transmision", async (req, res) => {
-     try {
-   
-       const { stream_key } = req.body;
-   
-       if (!stream_key) {
-         return res.status(400).json({
-           ok: false,
-           error: "stream_key requerido"
-         });
-       }
-   
-       const result = await pool.query(
-         `
-         UPDATE transmisiones_supervisor
-         SET estado = 'FINALIZADO',
-             finished_at = (now() AT TIME ZONE 'America/Lima')
-         WHERE stream_key = $1
-         RETURNING id
-         `,
-         [stream_key]
-       );
-   
-       if (result.rowCount === 0) {
-         return res.status(404).json({
-           ok: false,
-           error: "Transmisión no encontrada"
-         });
-       }
-   
-       res.json({
-         ok: true,
-         transmision_id: result.rows[0].id
-       });
-   
-     } catch (error) {
-       console.error("❌ finalizar-transmision:", error);
-       res.status(500).json({ error: "Error finalizando transmisión" });
-     }
-   });
-   /* =====================================================
-   📡 TRANSMISIONES ACTIVAS
-   ===================================================== */
-   app.get("/transmisiones-activas", async (req, res) => {
-
-  const { muni_id } = req.query;
-
-  if (!muni_id) {
-    return res.status(400).json({ error: "muni_id requerido" });
-  }
-
+app.post("/finalizar-transmision", async (req, res) => {
   try {
 
-    // 🔴 CERRAR TRANSMISIONES ABANDONADAS
-    await pool.query(`
+    const { stream_key } = req.body;
+
+    if (!stream_key) {
+      return res.status(400).json({
+        ok: false,
+        error: "stream_key requerido"
+      });
+    }
+
+    const result = await pool.query(
+      `
       UPDATE transmisiones_supervisor
       SET estado = 'FINALIZADO',
-          finished_at = now()
-      WHERE estado = 'ACTIVO'
-      AND created_at < now() - interval '5 minutes'
-    `);
+          finished_at = (now() AT TIME ZONE 'America/Lima')
+      WHERE stream_key = $1
+      RETURNING id
+      `,
+      [stream_key]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        ok: false,
+        error: "Transmisión no encontrada"
+      });
+    }
+
+    res.json({
+      ok: true,
+      transmision_id: result.rows[0].id
+    });
+
+  } catch (error) {
+    console.error("❌ finalizar-transmision:", error);
+    res.status(500).json({
+      ok: false,
+      error: "Error finalizando transmisión"
+    });
+  }
+});
+/* =====================================================
+   📡 TRANSMISIONES ACTIVAS
+===================================================== */
+app.get("/transmisiones-activas", async (req, res) => {
+  try {
+
+    const { muni_id } = req.query;
+
+    if (!muni_id) {
+      return res.status(400).json({
+        error: "muni_id requerido"
+      });
+    }
 
     const result = await pool.query(
       `
@@ -897,7 +894,7 @@ app.get("/marcaciones-actuales", async (req, res) => {
         created_at
       FROM transmisiones_supervisor
       WHERE muni_id = $1
-        AND estado = 'ACTIVO'
+      AND estado = 'ACTIVO'
       ORDER BY created_at DESC
       `,
       [muni_id]
@@ -906,23 +903,25 @@ app.get("/marcaciones-actuales", async (req, res) => {
     res.json(result.rows);
 
   } catch (error) {
-    console.error("❌ Error transmisiones:", error);
-    res.status(500).json({ error: "Error del servidor" });
+    console.error("❌ transmisiones-activas:", error);
+    res.status(500).json({
+      error: "Error del servidor"
+    });
   }
 });
-
 /* =====================================================
-   📜 HISTORIAL DE TRANSMISIONES DEL DÍA
+   📜 HISTORIAL TRANSMISIONES HOY
 ===================================================== */
 app.get("/transmisiones-hoy", async (req, res) => {
-
-  const { muni_id, gerencia } = req.query;
-
-  if (!muni_id) {
-    return res.status(400).json({ error: "muni_id requerido" });
-  }
-
   try {
+
+    const { muni_id, gerencia } = req.query;
+
+    if (!muni_id) {
+      return res.status(400).json({
+        error: "muni_id requerido"
+      });
+    }
 
     let query = `
       SELECT
@@ -935,9 +934,8 @@ app.get("/transmisiones-hoy", async (req, res) => {
         estado
       FROM transmisiones_supervisor
       WHERE muni_id = $1
-        AND estado = 'FINALIZADO'
-        AND (created_at AT TIME ZONE 'America/Lima')::date =
-            (now() AT TIME ZONE 'America/Lima')::date
+      AND (created_at AT TIME ZONE 'America/Lima')::date =
+          (now() AT TIME ZONE 'America/Lima')::date
     `;
 
     const values = [muni_id];
@@ -956,11 +954,14 @@ app.get("/transmisiones-hoy", async (req, res) => {
     res.json(result.rows);
 
   } catch (error) {
-    console.error("❌ Error historial transmisiones:", error);
-    res.status(500).json({ error: "Error del servidor" });
+    console.error("❌ transmisiones-hoy:", error);
+    res.status(500).json({
+      error: "Error del servidor"
+    });
   }
-
 });
+
+
 /* ===================================================== */
 app.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
