@@ -750,11 +750,13 @@ app.get("/marcaciones-actuales", async (req, res) => {
     res.status(500).json({ error: "Error del servidor" });
   }
 });
+
 /* =====================================================
    📡 INICIAR TRANSMISIÓN
 ===================================================== */
 app.post("/iniciar-transmision", async (req, res) => {
   try {
+
     const {
       muni_id,
       supervisor_dni,
@@ -771,8 +773,10 @@ app.post("/iniciar-transmision", async (req, res) => {
       });
     }
 
+    /* 🔑 GENERAR STREAM KEY */
     const stream_key = "live_" + Date.now();
 
+    /* 📡 INSERTAR TRANSMISIÓN */
     const result = await pool.query(
       `
       INSERT INTO transmisiones_supervisor (
@@ -793,7 +797,7 @@ app.post("/iniciar-transmision", async (req, res) => {
         (now() AT TIME ZONE 'America/Lima')::date,
         (now() AT TIME ZONE 'America/Lima')::time,
         $7,
-        'ACTIVO'
+        'ACTIVO',
         (now() AT TIME ZONE 'America/Lima')
       )
       RETURNING id
@@ -809,6 +813,7 @@ app.post("/iniciar-transmision", async (req, res) => {
       ]
     );
 
+    /* 📤 RESPUESTA */
     res.json({
       ok: true,
       transmision_id: result.rows[0].id,
@@ -816,11 +821,14 @@ app.post("/iniciar-transmision", async (req, res) => {
     });
 
   } catch (error) {
+
     console.error("❌ iniciar-transmision:", error);
+
     res.status(500).json({
       ok: false,
       error: "Error iniciando transmisión"
     });
+
   }
 });
 /* =====================================================
