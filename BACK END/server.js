@@ -785,7 +785,8 @@ app.post("/iniciar-transmision", async (req, res) => {
         fecha,
         hora,
         stream_key,
-        estado
+        estado,
+        created_at
       )
       VALUES (
         $1,$2,$3,$4,$5,$6,
@@ -793,6 +794,7 @@ app.post("/iniciar-transmision", async (req, res) => {
         (now() AT TIME ZONE 'America/Lima')::time,
         $7,
         'ACTIVO'
+        (now() AT TIME ZONE 'America/Lima')
       )
       RETURNING id
       `,
@@ -908,6 +910,10 @@ app.get("/transmisiones-activas", async (req, res) => {
       error: "Error del servidor"
     });
   }
+
+
+
+   
 });
 /* =====================================================
    📜 HISTORIAL TRANSMISIONES HOY
