@@ -1,0 +1,12 @@
+{
+  "name": "stream-server",
+  "version": "1.0.0",
+  "main": "stream.js",
+  "scripts": {
+    "start": "node stream.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.8.3"
+  }
+}
