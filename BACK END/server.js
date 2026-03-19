@@ -1,3 +1,5 @@
+const http = require("http");
+const { Server } = require("socket.io");
 const webRoutes = require("./web");
 
 const express = require("express");
@@ -6,11 +8,52 @@ require("dotenv").config();
 const pool = require("./db");
 
 const app = express();
+const server = http.createServer(app);
 app.use(cors());
 app.use(express.json());
 app.use(webRoutes);
 
 const PORT = process.env.PORT || 3000;
+
+
+/* =====================================================
+   📐 SOCKET.IO
+===================================================== */
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  },
+  transports: ["websocket"]
+});
+
+io.on("connection", (socket) => {
+
+  console.log("🔌 Cliente conectado");
+
+  socket.on("join-room", ({ roomId, role }) => {
+    socket.join(roomId);
+    socket.role = role;
+    console.log(`👥 ${role} unido a sala ${roomId}`);
+  });
+
+  socket.on("offer", (data) => {
+    socket.to(data.roomId).emit("offer", data);
+  });
+
+  socket.on("answer", (data) => {
+    socket.to(data.roomId).emit("answer", data);
+  });
+
+  socket.on("ice-candidate", (data) => {
+    socket.to(data.roomId).emit("ice-candidate", data);
+  });
+
+  socket.on("disconnect", () => {
+    console.log("❌ Cliente desconectado");
+  });
+
+});
 /* =====================================================
    📐 FUNCIÓN DETECCIÓN PUNTO EN POLÍGONO
 ===================================================== */
@@ -977,11 +1020,9 @@ app.get("/transmisiones-hoy", async (req, res) => {
 
 
 /* ===================================================== */
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log("🚀 Servidor corriendo en puerto", PORT);
 });
-
-
 
 
 
