@@ -764,6 +764,75 @@ router.post("/incidencias-delictivas", async (req, res) => {
   }
 
 });
+/* =====================================================
+   🔥 LISTAR INCIDENCIAS DELICTIVAS (MAPA CALOR)
+===================================================== */
+
+router.get("/incidencias-delictivas", async (req, res) => {
+
+  const { muni_id } = req.query;
+
+  if (!muni_id) {
+    return res.status(400).json({
+      error: "muni_id requerido"
+    });
+  }
+
+  try {
+
+    const result = await pool.query(
+      `
+      SELECT
+
+        id,
+        codcaso,
+        feccaso,
+        txthoracaso,
+
+        tipodelito,
+        modalidaddelito,
+
+        tipo_via,
+        calle,
+        numerocalle,
+        cuadra,
+
+        sectorvecinal,
+        subsectorvecinal,
+
+        latitud,
+        longitud,
+
+        comisaria,
+        created_at
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+        AND latitud IS NOT NULL
+        AND longitud IS NOT NULL
+
+      ORDER BY created_at DESC
+      `,
+      [muni_id]
+    );
+
+    res.json(result.rows);
+
+  } catch (error) {
+
+    console.error(
+      "❌ Error listando incidencias:",
+      error
+    );
+
+    res.status(500).json({
+      error: "Error del servidor"
+    });
+
+  }
+
+});
 
 module.exports = router;
 
