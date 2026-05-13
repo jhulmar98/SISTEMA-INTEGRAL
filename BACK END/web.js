@@ -642,6 +642,128 @@ router.get("/marcaciones-locales-actuales", async (req, res) => {
     res.status(500).json({ error: "Error del servidor" });
   }
 });
+/* =====================================================
+   🚨 GUARDAR INCIDENCIAS DELICTIVAS
+===================================================== */
+
+router.post("/incidencias-delictivas", async (req, res) => {
+
+  const { muni_id, incidencias } = req.body;
+
+  if (!muni_id || !Array.isArray(incidencias)) {
+
+    return res.status(400).json({
+      error: "Datos incompletos"
+    });
+
+  }
+
+  const client = await pool.connect();
+
+  try {
+
+    await client.query("BEGIN");
+
+    /* 🔥 BORRAR INFORMACIÓN ANTERIOR */
+    await client.query(
+      `
+      DELETE FROM incidencias_delictivas
+      WHERE muni_id = $1
+      `,
+      [muni_id]
+    );
+
+    /* 🔥 INSERTAR NUEVA INFORMACIÓN */
+    for (const item of incidencias) {
+
+      await client.query(
+        `
+        INSERT INTO incidencias_delictivas (
+
+          muni_id,
+
+          codcaso,
+          feccaso,
+          txthoracaso,
+
+          tipodelito,
+          modalidaddelito,
+
+          tipo_via,
+          calle,
+          numerocalle,
+          cuadra,
+
+          sectorvecinal,
+          subsectorvecinal,
+
+          latitud,
+          longitud,
+
+          comisaria
+
+        )
+        VALUES (
+          $1,$2,$3,$4,$5,
+          $6,$7,$8,$9,$10,
+          $11,$12,$13,$14,$15
+        )
+        `,
+        [
+
+          muni_id,
+
+          item.CODCASO,
+          item.FECCASO,
+          item.TXTHORACASO,
+
+          item.TIPODELITO,
+          item.MODALIDADDELITO,
+
+          item["TIPO VIA"],
+          item.CALLE,
+          item.NUMEROCALLE,
+          item.CUADRA,
+
+          item.SECTORVECINAL,
+          item.SUBSECTORVECINAL,
+
+          item.LATITUD,
+          item.LONGITUD,
+
+          item.COMISARIA
+
+        ]
+      );
+
+    }
+
+    await client.query("COMMIT");
+
+    res.json({
+      ok: true
+    });
+
+  } catch (error) {
+
+    await client.query("ROLLBACK");
+
+    console.error(
+      "❌ Error incidencias:",
+      error
+    );
+
+    res.status(500).json({
+      error: "Error del servidor"
+    });
+
+  } finally {
+
+    client.release();
+
+  }
+
+});
 
 module.exports = router;
 
