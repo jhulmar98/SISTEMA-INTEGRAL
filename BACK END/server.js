@@ -6,6 +6,8 @@ const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 const pool = require("./db");
+const GEO_CACHE = new Map();
+const TURNOS_CACHE = new Map();
 
 const app = express();
 const server = http.createServer(app);
@@ -82,7 +84,142 @@ function pointInPolygon(lat, lng, polygon) {
 
   return inside;
 }
+/* =====================================================
+   🔥 CACHE GEOCERCAS
+===================================================== */
+async function cargarGeocercasCache() {
 
+  try {
+
+    const result = await pool.query(`
+      SELECT
+        g.id,
+        g.muni_id,
+        g.nombre,
+        gp.lat,
+        gp.lng,
+        gp.orden
+      FROM geocercas g
+      JOIN geocerca_puntos gp
+        ON gp.geocerca_id = g.id
+      WHERE g.activo = true
+      ORDER BY g.id, gp.orden
+    `);
+
+    GEO_CACHE.clear();
+
+    for (const row of result.rows) {
+
+      if (!GEO_CACHE.has(row.muni_id)) {
+        GEO_CACHE.set(row.muni_id, []);
+      }
+
+      let geo = GEO_CACHE
+        .get(row.muni_id)
+        .find(g => g.id === row.id);
+
+      if (!geo) {
+
+        geo = {
+          id: row.id,
+          nombre: row.nombre,
+          puntos: []
+        };
+
+        GEO_CACHE.get(row.muni_id).push(geo);
+      }
+
+      geo.puntos.push({
+        lat: row.lat,
+        lng: row.lng
+      });
+    }
+
+    console.log("✅ GEO CACHE OK");
+
+  } catch (error) {
+
+    console.error("❌ GEO CACHE:", error);
+
+  }
+}
+/* =====================================================
+   🔥 CACHE TURNOS
+===================================================== */
+async function cargarTurnosCache() {
+
+  try {
+
+    const result = await pool.query(`
+      SELECT
+        id,
+        muni_id,
+        codigo_turno,
+        hora_inicio,
+        hora_fin
+      FROM turnos
+    `);
+
+    TURNOS_CACHE.clear();
+
+    for (const row of result.rows) {
+
+      if (!TURNOS_CACHE.has(row.muni_id)) {
+        TURNOS_CACHE.set(row.muni_id, []);
+      }
+
+      TURNOS_CACHE.get(row.muni_id).push(row);
+    }
+
+    console.log("✅ TURNOS CACHE OK");
+
+  } catch (error) {
+
+    console.error("❌ TURNOS CACHE:", error);
+
+  }
+}
+function obtenerTurnoActual(muni_id) {
+
+  const turnos = TURNOS_CACHE.get(Number(muni_id)) || [];
+
+  const ahora = new Date();
+
+  const horaPeru = ahora.toLocaleTimeString(
+    "en-GB",
+    {
+      timeZone: "America/Lima",
+      hour12: false
+    }
+  );
+
+  for (const turno of turnos) {
+
+    const inicio =
+      turno.hora_inicio.toString().substring(0, 8);
+    
+    const fin =
+      turno.hora_fin.toString().substring(0, 8);
+
+    if (inicio < fin) {
+
+      if (horaPeru >= inicio && horaPeru <= fin) {
+        return turno;
+      }
+
+    } else {
+
+      if (
+        horaPeru >= inicio ||
+        horaPeru <= fin
+      ) {
+        return turno;
+      }
+    }
+  }
+
+  return null;
+}
  
 /* =====================================================
    🧪 TEST DB / HORA SERVIDOR (UTC)
@@ -207,35 +344,14 @@ app.post("/marcar", async (req, res) => {
       }
     }
 
-    /* 2️⃣ TURNO ACTIVO */
-    const turno = await client.query(
-      `
-      SELECT id
-      FROM turnos
-      WHERE muni_id = $1
-        AND (
-          (hora_inicio < hora_fin AND 
-            (now() AT TIME ZONE 'America/Lima')::time 
-              BETWEEN hora_inicio AND hora_fin)
-          OR
-          (hora_inicio > hora_fin AND 
-            (
-              (now() AT TIME ZONE 'America/Lima')::time >= hora_inicio
-              OR
-              (now() AT TIME ZONE 'America/Lima')::time <= hora_fin
-            )
-          )
-        )
-      LIMIT 1
-      `,
-      [muni_id]
-    );
-
-    if (turno.rows.length === 0) {
+    /* 2️⃣ TURNO ACTIVO (CACHE) */
+    const turno = obtenerTurnoActual(muni_id);
+    
+    if (!turno) {
       throw new Error("No existe turno activo");
     }
-
-    const turno_id = turno.rows[0].id;
+    
+    const turno_id = turno.id;
 
     /* 3️⃣ UPSERT PERSONAL */
     await client.query(
@@ -250,30 +366,25 @@ app.post("/marcar", async (req, res) => {
       [dni, muni_id, nombre, cargo, gerencia]
     );
 
-    /* 4️⃣ DETECTAR SECTOR */
+    /* 4️⃣ DETECTAR SECTOR (CACHE) */
     let sector_nombre = null;
-
-    const geos = await client.query(
-      `SELECT id, nombre FROM geocercas WHERE muni_id = $1 AND activo = true`,
-      [muni_id]
-    );
-
-    for (const geo of geos.rows) {
-      const puntos = await client.query(
-        `
-        SELECT lat, lng
-        FROM geocerca_puntos
-        WHERE geocerca_id = $1
-        ORDER BY orden
-        `,
-        [geo.id]
-      );
-
-      if (pointInPolygon(lat, lng, puntos.rows)) {
+    
+    const geos = GEO_CACHE.get(Number(muni_id)) || [];
+    
+    for (const geo of geos) {
+    
+      if (
+        pointInPolygon(
+          Number(lat),
+          Number(lng),
+          geo.puntos
+        )
+      ) {
         sector_nombre = geo.nombre;
         break;
       }
     }
+    
 
     /* 5️⃣ INSERTAR UBICACIÓN CON SECTOR */
     const ub = await client.query(
@@ -1027,9 +1138,16 @@ app.get("/transmisiones-hoy", async (req, res) => {
 
 
 /* ===================================================== */
-server.listen(PORT, () => {
-  console.log("🚀 Servidor corriendo en puerto", PORT);
-});
+(async () => {
+
+  await cargarGeocercasCache();
+  await cargarTurnosCache();
+
+  server.listen(PORT, () => {
+    console.log("🚀 Servidor corriendo en puerto", PORT);
+  });
+
+})();
 
 
 
