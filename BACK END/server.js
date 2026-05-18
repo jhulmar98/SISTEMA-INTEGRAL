@@ -1100,13 +1100,23 @@ app.get("/transmisiones-hoy", async (req, res) => {
 
     let query = `
       SELECT
-        id,
-        nombre_supervisor,
-        gerencia,
-        stream_key,
-        created_at,
-        finished_at,
-        estado
+      id,
+      supervisor_dni,
+      nombre_supervisor,
+      gerencia,
+    
+      lat,
+      lng,
+    
+      stream_key,
+    
+      fecha,
+      hora,
+    
+      created_at,
+      finished_at,
+    
+      estado
       FROM transmisiones_supervisor
       WHERE muni_id = $1
       AND (created_at AT TIME ZONE 'America/Lima')::date =
