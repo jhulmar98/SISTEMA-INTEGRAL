@@ -770,7 +770,7 @@ router.post("/incidencias-delictivas", async (req, res) => {
 
 router.get("/incidencias-delictivas", async (req, res) => {
 
-  const { muni_id } = req.query;
+  const { muni_id, tipo } = req.query;
 
   if (!muni_id) {
     return res.status(400).json({
@@ -780,30 +780,20 @@ router.get("/incidencias-delictivas", async (req, res) => {
 
   try {
 
-    const result = await pool.query(
-      `
+    let query = `
       SELECT
 
         id,
-        codcaso,
-        feccaso,
-        txthoracaso,
 
         tipodelito,
         modalidaddelito,
 
-        tipo_via,
-        calle,
-        numerocalle,
-        cuadra,
-
-        sectorvecinal,
-        subsectorvecinal,
-
         latitud,
         longitud,
 
+        sectorvecinal,
         comisaria,
+
         created_at
 
       FROM incidencias_delictivas
@@ -811,10 +801,35 @@ router.get("/incidencias-delictivas", async (req, res) => {
       WHERE muni_id = $1
         AND latitud IS NOT NULL
         AND longitud IS NOT NULL
+    `;
 
+    const values = [muni_id];
+
+    /* =====================================================
+       🔥 FILTRO POR TIPO
+    ===================================================== */
+
+    if (
+      tipo &&
+      tipo !== "TODOS"
+    ) {
+
+      query += `
+        AND UPPER(TRIM(tipodelito))
+            = UPPER(TRIM($2))
+      `;
+
+      values.push(tipo);
+
+    }
+
+    query += `
       ORDER BY created_at DESC
-      `,
-      [muni_id]
+    `;
+
+    const result = await pool.query(
+      query,
+      values
     );
 
     res.json(result.rows);
@@ -833,7 +848,58 @@ router.get("/incidencias-delictivas", async (req, res) => {
   }
 
 });
+/* =====================================================
+   📋 TIPOS DE DELITO
+===================================================== */
 
+router.get("/tipos-delito", async (req, res) => {
+
+  const { muni_id } = req.query;
+
+  if (!muni_id) {
+    return res.status(400).json({
+      error: "muni_id requerido"
+    });
+  }
+
+  try {
+
+    const result = await pool.query(
+      `
+      SELECT DISTINCT
+        TRIM(tipodelito) AS tipodelito
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+        AND tipodelito IS NOT NULL
+        AND TRIM(tipodelito) <> ''
+
+      ORDER BY tipodelito ASC
+      `,
+      [muni_id]
+    );
+
+    res.json(
+      result.rows.map(
+        r => r.tipodelito
+      )
+    );
+
+  } catch (error) {
+
+    console.error(
+      "❌ Error tipos-delito:",
+      error
+    );
+
+    res.status(500).json({
+      error: "Error del servidor"
+    });
+
+  }
+
+});
 module.exports = router;
 
 
