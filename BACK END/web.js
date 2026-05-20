@@ -900,6 +900,1663 @@ router.get("/tipos-delito", async (req, res) => {
   }
 
 });
+/* =====================================================
+   📊 DASHBOARD INCIDENCIAS
+===================================================== */
+
+router.get("/dashboard-incidencias", async (req, res) => {
+
+  const { muni_id } = req.query;
+
+  if (!muni_id) {
+    return res.status(400).json({
+      error: "muni_id requerido"
+    });
+  }
+
+  try {
+
+    /* =====================================================
+       🔥 TOTAL INCIDENCIAS
+    ===================================================== */
+
+    const totalResult = await pool.query(
+      `
+      SELECT COUNT(*) AS total
+      FROM incidencias_delictivas
+      WHERE muni_id = $1
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 TOP DELITOS
+    ===================================================== */
+
+    const delitosResult = await pool.query(
+      `
+      SELECT
+        COALESCE(TRIM(tipodelito), 'SIN DELITO')
+          AS tipodelito,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+
+      GROUP BY tipodelito
+
+      ORDER BY total DESC
+
+      LIMIT 10
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 TOP SECTORES
+    ===================================================== */
+
+    const sectoresResult = await pool.query(
+      `
+      SELECT
+        COALESCE(TRIM(sectorvecinal), 'SIN SECTOR')
+          AS sectorvecinal,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+
+      GROUP BY sectorvecinal
+
+      ORDER BY total DESC
+
+      LIMIT 10
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 DELITOS POR MES
+    ===================================================== */
+
+    const mesesResult = await pool.query(
+      `
+      SELECT
+
+        EXTRACT(
+          MONTH FROM feccaso
+        )::INTEGER AS mes,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+        AND feccaso IS NOT NULL
+
+      GROUP BY mes
+
+      ORDER BY mes ASC
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       📤 RESPUESTA
+    ===================================================== */
+
+    res.json({
+
+      total_incidencias:
+        Number(totalResult.rows[0].total),
+
+      top_delitos:
+        delitosResult.rows,
+
+      top_sectores:
+        sectoresResult.rows,
+
+      delitos_mes:
+        mesesResult.rows
+
+    });
+
+  } catch (error) {
+
+    console.error(
+      "❌ dashboard-incidencias:",
+      error
+    );
+
+    res.status(500).json({
+      error: "Error del servidor"
+    });
+
+  }
+
+});/* =====================================================
+   📊 DASHBOARD INCIDENCIAS
+===================================================== */
+
+router.get("/dashboard-incidencias", async (req, res) => {
+
+  const { muni_id } = req.query;
+
+  if (!muni_id) {
+    return res.status(400).json({
+      error: "muni_id requerido"
+    });
+  }
+
+  try {
+
+    /* =====================================================
+       🔥 TOTAL INCIDENCIAS
+    ===================================================== */
+
+    const totalResult = await pool.query(
+      `
+      SELECT COUNT(*) AS total
+      FROM incidencias_delictivas
+      WHERE muni_id = $1
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 TOP DELITOS
+    ===================================================== */
+
+    const delitosResult = await pool.query(
+      `
+      SELECT
+        COALESCE(TRIM(tipodelito), 'SIN DELITO')
+          AS tipodelito,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+
+      GROUP BY tipodelito
+
+      ORDER BY total DESC
+
+      LIMIT 10
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 TOP SECTORES
+    ===================================================== */
+
+    const sectoresResult = await pool.query(
+      `
+      SELECT
+        COALESCE(TRIM(sectorvecinal), 'SIN SECTOR')
+          AS sectorvecinal,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+
+      GROUP BY sectorvecinal
+
+      ORDER BY total DESC
+
+      LIMIT 10
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 DELITOS POR MES
+    ===================================================== */
+
+    const mesesResult = await pool.query(
+      `
+      SELECT
+
+        EXTRACT(
+          MONTH FROM feccaso
+        )::INTEGER AS mes,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+        AND feccaso IS NOT NULL
+
+      GROUP BY mes
+
+      ORDER BY mes ASC
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       📤 RESPUESTA
+    ===================================================== */
+
+    res.json({
+
+      total_incidencias:
+        Number(totalResult.rows[0].total),
+
+      top_delitos:
+        delitosResult.rows,
+
+      top_sectores:
+        sectoresResult.rows,
+
+      delitos_mes:
+        mesesResult.rows
+
+    });
+
+  } catch (error) {
+
+    console.error(
+      "❌ dashboard-incidencias:",
+      error
+    );
+
+    res.status(500).json({
+      error: "Error del servidor"
+    });
+
+  }
+
+});/* =====================================================
+   📊 DASHBOARD INCIDENCIAS
+===================================================== */
+
+router.get("/dashboard-incidencias", async (req, res) => {
+
+  const { muni_id } = req.query;
+
+  if (!muni_id) {
+    return res.status(400).json({
+      error: "muni_id requerido"
+    });
+  }
+
+  try {
+
+    /* =====================================================
+       🔥 TOTAL INCIDENCIAS
+    ===================================================== */
+
+    const totalResult = await pool.query(
+      `
+      SELECT COUNT(*) AS total
+      FROM incidencias_delictivas
+      WHERE muni_id = $1
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 TOP DELITOS
+    ===================================================== */
+
+    const delitosResult = await pool.query(
+      `
+      SELECT
+        COALESCE(TRIM(tipodelito), 'SIN DELITO')
+          AS tipodelito,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+
+      GROUP BY tipodelito
+
+      ORDER BY total DESC
+
+      LIMIT 10
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 TOP SECTORES
+    ===================================================== */
+
+    const sectoresResult = await pool.query(
+      `
+      SELECT
+        COALESCE(TRIM(sectorvecinal), 'SIN SECTOR')
+          AS sectorvecinal,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+
+      GROUP BY sectorvecinal
+
+      ORDER BY total DESC
+
+      LIMIT 10
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 DELITOS POR MES
+    ===================================================== */
+
+    const mesesResult = await pool.query(
+      `
+      SELECT
+
+        EXTRACT(
+          MONTH FROM feccaso
+        )::INTEGER AS mes,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+        AND feccaso IS NOT NULL
+
+      GROUP BY mes
+
+      ORDER BY mes ASC
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       📤 RESPUESTA
+    ===================================================== */
+
+    res.json({
+
+      total_incidencias:
+        Number(totalResult.rows[0].total),
+
+      top_delitos:
+        delitosResult.rows,
+
+      top_sectores:
+        sectoresResult.rows,
+
+      delitos_mes:
+        mesesResult.rows
+
+    });
+
+  } catch (error) {
+
+    console.error(
+      "❌ dashboard-incidencias:",
+      error
+    );
+
+    res.status(500).json({
+      error: "Error del servidor"
+    });
+
+  }
+
+});/* =====================================================
+   📊 DASHBOARD INCIDENCIAS
+===================================================== */
+
+router.get("/dashboard-incidencias", async (req, res) => {
+
+  const { muni_id } = req.query;
+
+  if (!muni_id) {
+    return res.status(400).json({
+      error: "muni_id requerido"
+    });
+  }
+
+  try {
+
+    /* =====================================================
+       🔥 TOTAL INCIDENCIAS
+    ===================================================== */
+
+    const totalResult = await pool.query(
+      `
+      SELECT COUNT(*) AS total
+      FROM incidencias_delictivas
+      WHERE muni_id = $1
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 TOP DELITOS
+    ===================================================== */
+
+    const delitosResult = await pool.query(
+      `
+      SELECT
+        COALESCE(TRIM(tipodelito), 'SIN DELITO')
+          AS tipodelito,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+
+      GROUP BY tipodelito
+
+      ORDER BY total DESC
+
+      LIMIT 10
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 TOP SECTORES
+    ===================================================== */
+
+    const sectoresResult = await pool.query(
+      `
+      SELECT
+        COALESCE(TRIM(sectorvecinal), 'SIN SECTOR')
+          AS sectorvecinal,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+
+      GROUP BY sectorvecinal
+
+      ORDER BY total DESC
+
+      LIMIT 10
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 DELITOS POR MES
+    ===================================================== */
+
+    const mesesResult = await pool.query(
+      `
+      SELECT
+
+        EXTRACT(
+          MONTH FROM feccaso
+        )::INTEGER AS mes,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+        AND feccaso IS NOT NULL
+
+      GROUP BY mes
+
+      ORDER BY mes ASC
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       📤 RESPUESTA
+    ===================================================== */
+
+    res.json({
+
+      total_incidencias:
+        Number(totalResult.rows[0].total),
+
+      top_delitos:
+        delitosResult.rows,
+
+      top_sectores:
+        sectoresResult.rows,
+
+      delitos_mes:
+        mesesResult.rows
+
+    });
+
+  } catch (error) {
+
+    console.error(
+      "❌ dashboard-incidencias:",
+      error
+    );
+
+    res.status(500).json({
+      error: "Error del servidor"
+    });
+
+  }
+
+});/* =====================================================
+   📊 DASHBOARD INCIDENCIAS
+===================================================== */
+
+router.get("/dashboard-incidencias", async (req, res) => {
+
+  const { muni_id } = req.query;
+
+  if (!muni_id) {
+    return res.status(400).json({
+      error: "muni_id requerido"
+    });
+  }
+
+  try {
+
+    /* =====================================================
+       🔥 TOTAL INCIDENCIAS
+    ===================================================== */
+
+    const totalResult = await pool.query(
+      `
+      SELECT COUNT(*) AS total
+      FROM incidencias_delictivas
+      WHERE muni_id = $1
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 TOP DELITOS
+    ===================================================== */
+
+    const delitosResult = await pool.query(
+      `
+      SELECT
+        COALESCE(TRIM(tipodelito), 'SIN DELITO')
+          AS tipodelito,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+
+      GROUP BY tipodelito
+
+      ORDER BY total DESC
+
+      LIMIT 10
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 TOP SECTORES
+    ===================================================== */
+
+    const sectoresResult = await pool.query(
+      `
+      SELECT
+        COALESCE(TRIM(sectorvecinal), 'SIN SECTOR')
+          AS sectorvecinal,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+
+      GROUP BY sectorvecinal
+
+      ORDER BY total DESC
+
+      LIMIT 10
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 DELITOS POR MES
+    ===================================================== */
+
+    const mesesResult = await pool.query(
+      `
+      SELECT
+
+        EXTRACT(
+          MONTH FROM feccaso
+        )::INTEGER AS mes,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+        AND feccaso IS NOT NULL
+
+      GROUP BY mes
+
+      ORDER BY mes ASC
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       📤 RESPUESTA
+    ===================================================== */
+
+    res.json({
+
+      total_incidencias:
+        Number(totalResult.rows[0].total),
+
+      top_delitos:
+        delitosResult.rows,
+
+      top_sectores:
+        sectoresResult.rows,
+
+      delitos_mes:
+        mesesResult.rows
+
+    });
+
+  } catch (error) {
+
+    console.error(
+      "❌ dashboard-incidencias:",
+      error
+    );
+
+    res.status(500).json({
+      error: "Error del servidor"
+    });
+
+  }
+
+});/* =====================================================
+   📊 DASHBOARD INCIDENCIAS
+===================================================== */
+
+router.get("/dashboard-incidencias", async (req, res) => {
+
+  const { muni_id } = req.query;
+
+  if (!muni_id) {
+    return res.status(400).json({
+      error: "muni_id requerido"
+    });
+  }
+
+  try {
+
+    /* =====================================================
+       🔥 TOTAL INCIDENCIAS
+    ===================================================== */
+
+    const totalResult = await pool.query(
+      `
+      SELECT COUNT(*) AS total
+      FROM incidencias_delictivas
+      WHERE muni_id = $1
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 TOP DELITOS
+    ===================================================== */
+
+    const delitosResult = await pool.query(
+      `
+      SELECT
+        COALESCE(TRIM(tipodelito), 'SIN DELITO')
+          AS tipodelito,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+
+      GROUP BY tipodelito
+
+      ORDER BY total DESC
+
+      LIMIT 10
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 TOP SECTORES
+    ===================================================== */
+
+    const sectoresResult = await pool.query(
+      `
+      SELECT
+        COALESCE(TRIM(sectorvecinal), 'SIN SECTOR')
+          AS sectorvecinal,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+
+      GROUP BY sectorvecinal
+
+      ORDER BY total DESC
+
+      LIMIT 10
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 DELITOS POR MES
+    ===================================================== */
+
+    const mesesResult = await pool.query(
+      `
+      SELECT
+
+        EXTRACT(
+          MONTH FROM feccaso
+        )::INTEGER AS mes,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+        AND feccaso IS NOT NULL
+
+      GROUP BY mes
+
+      ORDER BY mes ASC
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       📤 RESPUESTA
+    ===================================================== */
+
+    res.json({
+
+      total_incidencias:
+        Number(totalResult.rows[0].total),
+
+      top_delitos:
+        delitosResult.rows,
+
+      top_sectores:
+        sectoresResult.rows,
+
+      delitos_mes:
+        mesesResult.rows
+
+    });
+
+  } catch (error) {
+
+    console.error(
+      "❌ dashboard-incidencias:",
+      error
+    );
+
+    res.status(500).json({
+      error: "Error del servidor"
+    });
+
+  }
+
+});/* =====================================================
+   📊 DASHBOARD INCIDENCIAS
+===================================================== */
+
+router.get("/dashboard-incidencias", async (req, res) => {
+
+  const { muni_id } = req.query;
+
+  if (!muni_id) {
+    return res.status(400).json({
+      error: "muni_id requerido"
+    });
+  }
+
+  try {
+
+    /* =====================================================
+       🔥 TOTAL INCIDENCIAS
+    ===================================================== */
+
+    const totalResult = await pool.query(
+      `
+      SELECT COUNT(*) AS total
+      FROM incidencias_delictivas
+      WHERE muni_id = $1
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 TOP DELITOS
+    ===================================================== */
+
+    const delitosResult = await pool.query(
+      `
+      SELECT
+        COALESCE(TRIM(tipodelito), 'SIN DELITO')
+          AS tipodelito,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+
+      GROUP BY tipodelito
+
+      ORDER BY total DESC
+
+      LIMIT 10
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 TOP SECTORES
+    ===================================================== */
+
+    const sectoresResult = await pool.query(
+      `
+      SELECT
+        COALESCE(TRIM(sectorvecinal), 'SIN SECTOR')
+          AS sectorvecinal,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+
+      GROUP BY sectorvecinal
+
+      ORDER BY total DESC
+
+      LIMIT 10
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 DELITOS POR MES
+    ===================================================== */
+
+    const mesesResult = await pool.query(
+      `
+      SELECT
+
+        EXTRACT(
+          MONTH FROM feccaso
+        )::INTEGER AS mes,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+        AND feccaso IS NOT NULL
+
+      GROUP BY mes
+
+      ORDER BY mes ASC
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       📤 RESPUESTA
+    ===================================================== */
+
+    res.json({
+
+      total_incidencias:
+        Number(totalResult.rows[0].total),
+
+      top_delitos:
+        delitosResult.rows,
+
+      top_sectores:
+        sectoresResult.rows,
+
+      delitos_mes:
+        mesesResult.rows
+
+    });
+
+  } catch (error) {
+
+    console.error(
+      "❌ dashboard-incidencias:",
+      error
+    );
+
+    res.status(500).json({
+      error: "Error del servidor"
+    });
+
+  }
+
+});/* =====================================================
+   📊 DASHBOARD INCIDENCIAS
+===================================================== */
+
+router.get("/dashboard-incidencias", async (req, res) => {
+
+  const { muni_id } = req.query;
+
+  if (!muni_id) {
+    return res.status(400).json({
+      error: "muni_id requerido"
+    });
+  }
+
+  try {
+
+    /* =====================================================
+       🔥 TOTAL INCIDENCIAS
+    ===================================================== */
+
+    const totalResult = await pool.query(
+      `
+      SELECT COUNT(*) AS total
+      FROM incidencias_delictivas
+      WHERE muni_id = $1
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 TOP DELITOS
+    ===================================================== */
+
+    const delitosResult = await pool.query(
+      `
+      SELECT
+        COALESCE(TRIM(tipodelito), 'SIN DELITO')
+          AS tipodelito,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+
+      GROUP BY tipodelito
+
+      ORDER BY total DESC
+
+      LIMIT 10
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 TOP SECTORES
+    ===================================================== */
+
+    const sectoresResult = await pool.query(
+      `
+      SELECT
+        COALESCE(TRIM(sectorvecinal), 'SIN SECTOR')
+          AS sectorvecinal,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+
+      GROUP BY sectorvecinal
+
+      ORDER BY total DESC
+
+      LIMIT 10
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 DELITOS POR MES
+    ===================================================== */
+
+    const mesesResult = await pool.query(
+      `
+      SELECT
+
+        EXTRACT(
+          MONTH FROM feccaso
+        )::INTEGER AS mes,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+        AND feccaso IS NOT NULL
+
+      GROUP BY mes
+
+      ORDER BY mes ASC
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       📤 RESPUESTA
+    ===================================================== */
+
+    res.json({
+
+      total_incidencias:
+        Number(totalResult.rows[0].total),
+
+      top_delitos:
+        delitosResult.rows,
+
+      top_sectores:
+        sectoresResult.rows,
+
+      delitos_mes:
+        mesesResult.rows
+
+    });
+
+  } catch (error) {
+
+    console.error(
+      "❌ dashboard-incidencias:",
+      error
+    );
+
+    res.status(500).json({
+      error: "Error del servidor"
+    });
+
+  }
+
+});/* =====================================================
+   📊 DASHBOARD INCIDENCIAS
+===================================================== */
+
+router.get("/dashboard-incidencias", async (req, res) => {
+
+  const { muni_id } = req.query;
+
+  if (!muni_id) {
+    return res.status(400).json({
+      error: "muni_id requerido"
+    });
+  }
+
+  try {
+
+    /* =====================================================
+       🔥 TOTAL INCIDENCIAS
+    ===================================================== */
+
+    const totalResult = await pool.query(
+      `
+      SELECT COUNT(*) AS total
+      FROM incidencias_delictivas
+      WHERE muni_id = $1
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 TOP DELITOS
+    ===================================================== */
+
+    const delitosResult = await pool.query(
+      `
+      SELECT
+        COALESCE(TRIM(tipodelito), 'SIN DELITO')
+          AS tipodelito,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+
+      GROUP BY tipodelito
+
+      ORDER BY total DESC
+
+      LIMIT 10
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 TOP SECTORES
+    ===================================================== */
+
+    const sectoresResult = await pool.query(
+      `
+      SELECT
+        COALESCE(TRIM(sectorvecinal), 'SIN SECTOR')
+          AS sectorvecinal,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+
+      GROUP BY sectorvecinal
+
+      ORDER BY total DESC
+
+      LIMIT 10
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 DELITOS POR MES
+    ===================================================== */
+
+    const mesesResult = await pool.query(
+      `
+      SELECT
+
+        EXTRACT(
+          MONTH FROM feccaso
+        )::INTEGER AS mes,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+        AND feccaso IS NOT NULL
+
+      GROUP BY mes
+
+      ORDER BY mes ASC
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       📤 RESPUESTA
+    ===================================================== */
+
+    res.json({
+
+      total_incidencias:
+        Number(totalResult.rows[0].total),
+
+      top_delitos:
+        delitosResult.rows,
+
+      top_sectores:
+        sectoresResult.rows,
+
+      delitos_mes:
+        mesesResult.rows
+
+    });
+
+  } catch (error) {
+
+    console.error(
+      "❌ dashboard-incidencias:",
+      error
+    );
+
+    res.status(500).json({
+      error: "Error del servidor"
+    });
+
+  }
+
+});/* =====================================================
+   📊 DASHBOARD INCIDENCIAS
+===================================================== */
+
+router.get("/dashboard-incidencias", async (req, res) => {
+
+  const { muni_id } = req.query;
+
+  if (!muni_id) {
+    return res.status(400).json({
+      error: "muni_id requerido"
+    });
+  }
+
+  try {
+
+    /* =====================================================
+       🔥 TOTAL INCIDENCIAS
+    ===================================================== */
+
+    const totalResult = await pool.query(
+      `
+      SELECT COUNT(*) AS total
+      FROM incidencias_delictivas
+      WHERE muni_id = $1
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 TOP DELITOS
+    ===================================================== */
+
+    const delitosResult = await pool.query(
+      `
+      SELECT
+        COALESCE(TRIM(tipodelito), 'SIN DELITO')
+          AS tipodelito,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+
+      GROUP BY tipodelito
+
+      ORDER BY total DESC
+
+      LIMIT 10
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 TOP SECTORES
+    ===================================================== */
+
+    const sectoresResult = await pool.query(
+      `
+      SELECT
+        COALESCE(TRIM(sectorvecinal), 'SIN SECTOR')
+          AS sectorvecinal,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+
+      GROUP BY sectorvecinal
+
+      ORDER BY total DESC
+
+      LIMIT 10
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 DELITOS POR MES
+    ===================================================== */
+
+    const mesesResult = await pool.query(
+      `
+      SELECT
+
+        EXTRACT(
+          MONTH FROM feccaso
+        )::INTEGER AS mes,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+        AND feccaso IS NOT NULL
+
+      GROUP BY mes
+
+      ORDER BY mes ASC
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       📤 RESPUESTA
+    ===================================================== */
+
+    res.json({
+
+      total_incidencias:
+        Number(totalResult.rows[0].total),
+
+      top_delitos:
+        delitosResult.rows,
+
+      top_sectores:
+        sectoresResult.rows,
+
+      delitos_mes:
+        mesesResult.rows
+
+    });
+
+  } catch (error) {
+
+    console.error(
+      "❌ dashboard-incidencias:",
+      error
+    );
+
+    res.status(500).json({
+      error: "Error del servidor"
+    });
+
+  }
+
+});/* =====================================================
+   📊 DASHBOARD INCIDENCIAS
+===================================================== */
+
+router.get("/dashboard-incidencias", async (req, res) => {
+
+  const { muni_id } = req.query;
+
+  if (!muni_id) {
+    return res.status(400).json({
+      error: "muni_id requerido"
+    });
+  }
+
+  try {
+
+    /* =====================================================
+       🔥 TOTAL INCIDENCIAS
+    ===================================================== */
+
+    const totalResult = await pool.query(
+      `
+      SELECT COUNT(*) AS total
+      FROM incidencias_delictivas
+      WHERE muni_id = $1
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 TOP DELITOS
+    ===================================================== */
+
+    const delitosResult = await pool.query(
+      `
+      SELECT
+        COALESCE(TRIM(tipodelito), 'SIN DELITO')
+          AS tipodelito,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+
+      GROUP BY tipodelito
+
+      ORDER BY total DESC
+
+      LIMIT 10
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 TOP SECTORES
+    ===================================================== */
+
+    const sectoresResult = await pool.query(
+      `
+      SELECT
+        COALESCE(TRIM(sectorvecinal), 'SIN SECTOR')
+          AS sectorvecinal,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+
+      GROUP BY sectorvecinal
+
+      ORDER BY total DESC
+
+      LIMIT 10
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 DELITOS POR MES
+    ===================================================== */
+
+    const mesesResult = await pool.query(
+      `
+      SELECT
+
+        EXTRACT(
+          MONTH FROM feccaso
+        )::INTEGER AS mes,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+        AND feccaso IS NOT NULL
+
+      GROUP BY mes
+
+      ORDER BY mes ASC
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       📤 RESPUESTA
+    ===================================================== */
+
+    res.json({
+
+      total_incidencias:
+        Number(totalResult.rows[0].total),
+
+      top_delitos:
+        delitosResult.rows,
+
+      top_sectores:
+        sectoresResult.rows,
+
+      delitos_mes:
+        mesesResult.rows
+
+    });
+
+  } catch (error) {
+
+    console.error(
+      "❌ dashboard-incidencias:",
+      error
+    );
+
+    res.status(500).json({
+      error: "Error del servidor"
+    });
+
+  }
+
+});/* =====================================================
+   📊 DASHBOARD INCIDENCIAS
+===================================================== */
+
+router.get("/dashboard-incidencias", async (req, res) => {
+
+  const { muni_id } = req.query;
+
+  if (!muni_id) {
+    return res.status(400).json({
+      error: "muni_id requerido"
+    });
+  }
+
+  try {
+
+    /* =====================================================
+       🔥 TOTAL INCIDENCIAS
+    ===================================================== */
+
+    const totalResult = await pool.query(
+      `
+      SELECT COUNT(*) AS total
+      FROM incidencias_delictivas
+      WHERE muni_id = $1
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 TOP DELITOS
+    ===================================================== */
+
+    const delitosResult = await pool.query(
+      `
+      SELECT
+        COALESCE(TRIM(tipodelito), 'SIN DELITO')
+          AS tipodelito,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+
+      GROUP BY tipodelito
+
+      ORDER BY total DESC
+
+      LIMIT 10
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 TOP SECTORES
+    ===================================================== */
+
+    const sectoresResult = await pool.query(
+      `
+      SELECT
+        COALESCE(TRIM(sectorvecinal), 'SIN SECTOR')
+          AS sectorvecinal,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+
+      GROUP BY sectorvecinal
+
+      ORDER BY total DESC
+
+      LIMIT 10
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       🔥 DELITOS POR MES
+    ===================================================== */
+
+    const mesesResult = await pool.query(
+      `
+      SELECT
+
+        EXTRACT(
+          MONTH FROM feccaso
+        )::INTEGER AS mes,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+        AND feccaso IS NOT NULL
+
+      GROUP BY mes
+
+      ORDER BY mes ASC
+      `,
+      [muni_id]
+    );
+
+    /* =====================================================
+       📤 RESPUESTA
+    ===================================================== */
+
+    res.json({
+
+      total_incidencias:
+        Number(totalResult.rows[0].total),
+
+      top_delitos:
+        delitosResult.rows,
+
+      top_sectores:
+        sectoresResult.rows,
+
+      delitos_mes:
+        mesesResult.rows
+
+    });
+
+  } catch (error) {
+
+    console.error(
+      "❌ dashboard-incidencias:",
+      error
+    );
+
+    res.status(500).json({
+      error: "Error del servidor"
+    });
+
+  }
+
+});
 module.exports = router;
 
 
