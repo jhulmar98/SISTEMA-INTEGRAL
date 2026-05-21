@@ -1224,6 +1224,10 @@ router.get("/dashboard-delito", async (req, res) => {
 
   try {
 
+    /* =====================================================
+       FILTROS GENERALES
+    ===================================================== */
+
     const values = [muni_id, tipo];
 
     let filtros = `
@@ -1234,6 +1238,10 @@ router.get("/dashboard-delito", async (req, res) => {
 
     let idx = 3;
 
+    /* =====================================================
+       FILTRO AÑO
+    ===================================================== */
+
     if (anio && anio != "TODOS") {
 
       filtros += `
@@ -1241,30 +1249,45 @@ router.get("/dashboard-delito", async (req, res) => {
       `;
 
       values.push(anio);
-      idx++;
-    }
 
-    if (mes && mes != "TODOS") {
-
-      filtros += `
-        AND EXTRACT(MONTH FROM feccaso) = $${idx}
-      `;
-
-      values.push(mes);
       idx++;
     }
 
     /* =====================================================
-       TOTAL DELITOS
+       FILTRO MES
+       SOLO PARA CARDS
+    ===================================================== */
+
+    let filtrosMes = filtros;
+
+    let valuesMes = [...values];
+
+    let idxMes = idx;
+
+    if (mes && mes != "TODOS") {
+
+      filtrosMes += `
+        AND EXTRACT(MONTH FROM feccaso) = $${idxMes}
+      `;
+
+      valuesMes.push(mes);
+
+      idxMes++;
+    }
+
+    /* =====================================================
+       TOTAL
     ===================================================== */
 
     const totalResult = await pool.query(
       `
       SELECT COUNT(*)::INTEGER AS total
+
       FROM incidencias_delictivas
-      ${filtros}
+
+      ${filtrosMes}
       `,
-      values
+      valuesMes
     );
 
     /* =====================================================
@@ -1284,17 +1307,18 @@ router.get("/dashboard-delito", async (req, res) => {
 
       FROM incidencias_delictivas
 
-      ${filtros}
+      ${filtrosMes}
 
       GROUP BY modalidad
 
       ORDER BY total DESC
       `,
-      values
+      valuesMes
     );
 
     /* =====================================================
        DELITOS POR MES
+       🔥 SOLO AÑO
     ===================================================== */
 
     const mesesResult = await pool.query(
@@ -1339,10 +1363,14 @@ router.get("/dashboard-delito", async (req, res) => {
       [muni_id]
     );
 
+    /* =====================================================
+       RESPUESTA
+    ===================================================== */
+
     res.json({
 
       total:
-        totalResult.rows[0].total,
+        Number(totalResult.rows[0].total),
 
       modalidades:
         modalidadesResult.rows,
