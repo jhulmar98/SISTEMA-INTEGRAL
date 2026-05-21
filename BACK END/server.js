@@ -409,7 +409,30 @@ app.post("/marcar", async (req, res) => {
     );
 
     const supervisor_id = sup.rows[0]?.id || null;
+        /* 7️⃣ FECHA OPERATIVA */
+    const ahoraPeru = new Date(
+      new Date().toLocaleString(
+        "en-US",
+        { timeZone: "America/Lima" }
+      )
+    );
 
+    let fechaOperativa = new Date(ahoraPeru);
+
+    // 🔥 T3 después de medianoche = día anterior
+    if (
+      turno.codigo_turno === "T3" &&
+      ahoraPeru.getHours() < 12
+    ) {
+      fechaOperativa.setDate(
+        fechaOperativa.getDate() - 1
+      );
+    }
+
+    const fechaSQL =
+      fechaOperativa
+        .toISOString()
+        .split("T")[0];
     /* 7️⃣ INSERTAR MARCACIÓN */
     await client.query(
       `
@@ -426,10 +449,10 @@ app.post("/marcar", async (req, res) => {
         created_at
       )
       VALUES (
-        $1,$2,$3,$4,$5,
-        (now() AT TIME ZONE 'America/Lima')::date,
+        $1,$2,$3,$4,$5,$6,
+      
         (now() AT TIME ZONE 'America/Lima')::time,
-        $6,$7,
+        $7,$8,
         now()
       )
       `,
@@ -439,6 +462,7 @@ app.post("/marcar", async (req, res) => {
         supervisor_id,
         ubicacion_id,
         turno_id,
+        fechaSQL,
         gerencia,
         comentario
       ]
@@ -499,7 +523,7 @@ app.post("/marcar-local", async (req, res) => {
     // 1️⃣ DETERMINAR TURNO ACTIVO
     const turno = await client.query(
       `
-      SELECT id
+      SELECT id, codigo_turno
       FROM turnos
       WHERE muni_id = $1
         AND (
@@ -528,7 +552,32 @@ app.post("/marcar-local", async (req, res) => {
     }
 
     const turno_id = turno.rows[0].id;
-
+    const codigo_turno = turno.rows[0].codigo_turno;
+    
+    /* 🔥 FECHA OPERATIVA */
+    const ahoraPeru = new Date(
+      new Date().toLocaleString(
+        "en-US",
+        { timeZone: "America/Lima" }
+      )
+    );
+    
+    let fechaOperativa = new Date(ahoraPeru);
+    
+    /* 🔥 T3 DESPUÉS DE MEDIANOCHE */
+    if (
+      codigo_turno === "T3" &&
+      ahoraPeru.getHours() < 12
+    ) {
+      fechaOperativa.setDate(
+        fechaOperativa.getDate() - 1
+      );
+    }
+    
+    const fechaSQL =
+      fechaOperativa
+        .toISOString()
+        .split("T")[0];
     // 2️⃣ OBTENER SUPERVISOR
     const sup = await client.query(
       `
@@ -543,41 +592,42 @@ app.post("/marcar-local", async (req, res) => {
 
     // 3️⃣ INSERTAR MARCACIÓN LOCAL
     await client.query(
-      `
-      INSERT INTO marcaciones_locales (
-        muni_id,
-        supervisor_id,
-        turno_id,
-        fecha,
-        hora,
-        codigo_local,
-        nombre_local,
-        direccion,
-        lat,
-        lng,
-        comentario,
-        created_at
-      )
-      VALUES (
-        $1,$2,$3,
-        (now() AT TIME ZONE 'America/Lima')::date,
-        (now() AT TIME ZONE 'America/Lima')::time,
-        $4,$5,$6,$7,$8,$9,
-        now()
-      )
-      `,
-      [
-        muni_id,
-        supervisor_id,
-        turno_id,
-        codigo_local,
-        nombre_local,
-        direccion,
-        lat,
-        lng,
-        comentario,
-      ]
-    );
+  `
+  INSERT INTO marcaciones_locales (
+    muni_id,
+    supervisor_id,
+    turno_id,
+    fecha,
+    hora,
+    codigo_local,
+    nombre_local,
+    direccion,
+    lat,
+    lng,
+    comentario,
+    created_at
+  )
+  VALUES (
+    $1,$2,$3,
+    $4,
+    (now() AT TIME ZONE 'America/Lima')::time,
+    $5,$6,$7,$8,$9,$10,
+    now()
+  )
+  `,
+  [
+    muni_id,
+    supervisor_id,
+    turno_id,
+    fechaSQL,
+    codigo_local,
+    nombre_local,
+    direccion,
+    lat,
+    lng,
+    comentario,
+  ]
+);
 
     await client.query("COMMIT");
     res.json({ ok: true });
@@ -605,10 +655,10 @@ app.post("/patrullaje", async (req, res) => {
   }
 
   try {
-
+    
     const turno = await pool.query(
       `
-      SELECT id
+      SELECT id, codigo_turno
       FROM turnos
       WHERE muni_id = $1
         AND (
@@ -634,6 +684,30 @@ app.post("/patrullaje", async (req, res) => {
     }
 
     const turno_id = turno.rows[0].id;
+    /* 🔥 FECHA OPERATIVA */
+const ahoraPeru = new Date(
+  new Date().toLocaleString(
+    "en-US",
+    { timeZone: "America/Lima" }
+  )
+);
+
+let fechaOperativa = new Date(ahoraPeru);
+
+/* 🔥 T3 DESPUÉS DE MEDIANOCHE */
+if (
+  turno.rows[0].codigo_turno === "T3" &&
+  ahoraPeru.getHours() < 12
+) {
+  fechaOperativa.setDate(
+    fechaOperativa.getDate() - 1
+  );
+}
+
+const fechaSQL =
+  fechaOperativa
+    .toISOString()
+    .split("T")[0];
 
     await pool.query(
       `
@@ -641,18 +715,23 @@ app.post("/patrullaje", async (req, res) => {
         muni_id,
         supervisor_id,
         turno_id,
+        fecha,
         lat,
         lng,
         gerencia,
         cargo,
         created_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7, (now() AT TIME ZONE 'America/Lima'))
+      VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,
+        (now() AT TIME ZONE 'America/Lima')
+      )
       `,
       [
         muni_id,
         supervisor_id,
         turno_id,
+        fechaSQL,
         lat,
         lng,
         gerencia,
@@ -738,8 +817,17 @@ app.get("/recorrido-supervisor", async (req, res) => {
       JOIN supervisores s ON s.id = ps.supervisor_id
       WHERE ps.muni_id = $1
         AND ps.supervisor_id = $2
-        AND (ps.created_at AT TIME ZONE 'America/Lima')::date =
-            (now() AT TIME ZONE 'America/Lima')::date
+        AND ps.fecha = (
+          CASE
+            WHEN t.codigo_turno = 'T3'
+             AND EXTRACT(HOUR FROM (now() AT TIME ZONE 'America/Lima')) < 12
+            THEN (
+              (now() AT TIME ZONE 'America/Lima')::date - 1
+            )
+            ELSE
+              (now() AT TIME ZONE 'America/Lima')::date
+          END
+        )
     `;
 
     const values = [muni_id, supervisor_id];
