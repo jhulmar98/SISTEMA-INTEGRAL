@@ -1089,6 +1089,129 @@ router.get("/dashboard-incidencias", async (req, res) => {
   }
 
 });
+
+/* =====================================================
+   🚓 RECORRIDO SUPERVISOR
+===================================================== */
+router.get("/recorrido-supervisor", async (req, res) => {
+
+  const {
+    muni_id,
+    supervisor_id,
+    gerencia,
+    fecha,
+    turno
+  } = req.query;
+
+  if (!muni_id || !supervisor_id) {
+    return res.status(400).json({
+      error: "muni_id y supervisor_id requeridos"
+    });
+  }
+
+  try {
+
+    let query = `
+      SELECT
+        ps.lat,
+        ps.lng,
+        ps.created_at,
+        t.codigo_turno
+
+      FROM patrullajes_supervisor ps
+
+      LEFT JOIN supervisores s
+        ON s.id = ps.supervisor_id
+
+      LEFT JOIN turnos t
+        ON t.id = ps.turno_id
+
+      WHERE ps.muni_id = $1
+        AND ps.supervisor_id = $2
+    `;
+
+    const values = [
+      muni_id,
+      supervisor_id
+    ];
+
+    let idx = 3;
+
+    /* =====================================================
+       📅 FILTRO FECHA
+    ===================================================== */
+    if (fecha) {
+
+      query += `
+        AND ps.fecha = $${idx}
+      `;
+
+      values.push(fecha);
+      idx++;
+    }
+
+    /* =====================================================
+       ⏰ FILTRO TURNO
+    ===================================================== */
+    if (
+      turno &&
+      turno !== "TODO" &&
+      turno !== "TODOS"
+    ) {
+
+      query += `
+        AND t.codigo_turno = $${idx}
+      `;
+
+      values.push(turno);
+      idx++;
+    }
+
+    /* =====================================================
+       🏛 FILTRO GERENCIA
+    ===================================================== */
+    if (
+      gerencia &&
+      gerencia.trim() !== ""
+    ) {
+
+      query += `
+        AND TRIM(s.gerencia)
+            = TRIM($${idx})
+      `;
+
+      values.push(
+        gerencia.trim()
+      );
+
+      idx++;
+    }
+
+    query += `
+      ORDER BY ps.created_at ASC
+    `;
+
+    const result = await pool.query(
+      query,
+      values
+    );
+
+    res.json(result.rows);
+
+  } catch (error) {
+
+    console.error(
+      "❌ Error recorrido-supervisor:",
+      error
+    );
+
+    res.status(500).json({
+      error: "Error del servidor"
+    });
+
+  }
+
+});
 module.exports = router;
 
 
