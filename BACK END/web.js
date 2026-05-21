@@ -1212,6 +1212,165 @@ router.get("/recorrido-supervisor", async (req, res) => {
   }
 
 });
+router.get("/dashboard-delito", async (req, res) => {
+
+  const { muni_id, tipo, anio, mes } = req.query;
+
+  if (!muni_id || !tipo) {
+    return res.status(400).json({
+      error: "muni_id y tipo requeridos"
+    });
+  }
+
+  try {
+
+    const values = [muni_id, tipo];
+
+    let filtros = `
+      WHERE muni_id = $1
+      AND UPPER(TRIM(tipodelito))
+          = UPPER(TRIM($2))
+    `;
+
+    let idx = 3;
+
+    if (anio && anio != "TODOS") {
+
+      filtros += `
+        AND EXTRACT(YEAR FROM feccaso) = $${idx}
+      `;
+
+      values.push(anio);
+      idx++;
+    }
+
+    if (mes && mes != "TODOS") {
+
+      filtros += `
+        AND EXTRACT(MONTH FROM feccaso) = $${idx}
+      `;
+
+      values.push(mes);
+      idx++;
+    }
+
+    /* =====================================================
+       TOTAL DELITOS
+    ===================================================== */
+
+    const totalResult = await pool.query(
+      `
+      SELECT COUNT(*)::INTEGER AS total
+      FROM incidencias_delictivas
+      ${filtros}
+      `,
+      values
+    );
+
+    /* =====================================================
+       MODALIDADES
+    ===================================================== */
+
+    const modalidadesResult = await pool.query(
+      `
+      SELECT
+
+        COALESCE(
+          TRIM(modalidaddelito),
+          'SIN MODALIDAD'
+        ) AS modalidad,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      ${filtros}
+
+      GROUP BY modalidad
+
+      ORDER BY total DESC
+      `,
+      values
+    );
+
+    /* =====================================================
+       DELITOS POR MES
+    ===================================================== */
+
+    const mesesResult = await pool.query(
+      `
+      SELECT
+
+        EXTRACT(
+          MONTH FROM feccaso
+        )::INTEGER AS mes,
+
+        COUNT(*)::INTEGER AS total
+
+      FROM incidencias_delictivas
+
+      ${filtros}
+
+      GROUP BY mes
+
+      ORDER BY mes ASC
+      `,
+      values
+    );
+
+    /* =====================================================
+       AÑOS DISPONIBLES
+    ===================================================== */
+
+    const aniosResult = await pool.query(
+      `
+      SELECT DISTINCT
+
+        EXTRACT(
+          YEAR FROM feccaso
+        )::INTEGER AS anio
+
+      FROM incidencias_delictivas
+
+      WHERE muni_id = $1
+
+      ORDER BY anio DESC
+      `,
+      [muni_id]
+    );
+
+    res.json({
+
+      total:
+        totalResult.rows[0].total,
+
+      modalidades:
+        modalidadesResult.rows,
+
+      delitos_mes:
+        mesesResult.rows,
+
+      anios:
+        aniosResult.rows.map(
+          r => r.anio
+        )
+
+    });
+
+  } catch (error) {
+
+    console.error(
+      "❌ dashboard-delito:",
+      error
+    );
+
+    res.status(500).json({
+      error: "Error del servidor"
+    });
+
+  }
+
+});
 module.exports = router;
 
 
