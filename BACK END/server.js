@@ -300,6 +300,14 @@ app.post("/registrar-supervisor", async (req, res) => {
 /* =====================================================
    👮‍♂️ REGISTRAR MARCACIÓN (PRODUCCIÓN REAL)
 ===================================================== */
+/* =====================================================
+   👮‍♂️ REGISTRAR MARCACIÓN
+   - No modifica tablas
+   - QR multigerencial
+   - Bloqueo de 3 minutos
+   - Transacción PostgreSQL
+   - Diagnóstico preciso de errores
+===================================================== */
 app.post("/marcar", async (req, res) => {
   const {
     muni_id,
@@ -313,113 +321,317 @@ app.post("/marcar", async (req, res) => {
     supervisor_dni,
   } = req.body;
 
-  const client = await pool.connect();
+  /* ===================== VALIDACIÓN INICIAL ===================== */
+
+  if (
+    muni_id == null ||
+    !dni ||
+    !nombre ||
+    !cargo ||
+    !gerencia ||
+    lat == null ||
+    lng == null ||
+    !supervisor_dni
+  ) {
+    return res.status(400).json({
+      error: "Datos obligatorios incompletos",
+      recibido: {
+        muni_id,
+        dni,
+        nombre,
+        cargo,
+        gerencia,
+        lat,
+        lng,
+        supervisor_dni,
+      },
+    });
+  }
+
+  if (!/^\d{8}$/.test(String(dni).trim())) {
+    return res.status(400).json({
+      error: "El DNI del personal debe tener 8 dígitos",
+    });
+  }
+
+  if (!/^\d{8}$/.test(String(supervisor_dni).trim())) {
+    return res.status(400).json({
+      error: "El DNI del supervisor debe tener 8 dígitos",
+    });
+  }
+
+  const muniIdNormalizado = Number(muni_id);
+  const dniNormalizado = String(dni).trim();
+  const supervisorDniNormalizado =
+    String(supervisor_dni).trim();
+
+  const nombreNormalizado = String(nombre).trim();
+  const cargoNormalizado = String(cargo).trim();
+  const gerenciaNormalizada = String(gerencia).trim();
+  const comentarioNormalizado =
+    String(comentario ?? "").trim();
+
+  const latNormalizada = Number(lat);
+  const lngNormalizada = Number(lng);
+
+  if (
+    !Number.isInteger(muniIdNormalizado) ||
+    muniIdNormalizado <= 0
+  ) {
+    return res.status(400).json({
+      error: "muni_id inválido",
+    });
+  }
+
+  if (
+    !Number.isFinite(latNormalizada) ||
+    !Number.isFinite(lngNormalizada)
+  ) {
+    return res.status(400).json({
+      error: "Coordenadas inválidas",
+    });
+  }
+
+  let client;
+  let pasoActual = "conectando con PostgreSQL";
 
   try {
+    client = await pool.connect();
+
+    pasoActual = "iniciando transacción";
     await client.query("BEGIN");
 
-    /* 1️⃣ BLOQUEO 3 MINUTOS */
+    /* ===================== 1. MUNICIPALIDAD ===================== */
+
+    pasoActual = "validando municipalidad";
+
+    const municipalidad = await client.query(
+      `
+      SELECT id
+      FROM municipalidades
+      WHERE id = $1
+        AND activo = TRUE
+      LIMIT 1
+      `,
+      [muniIdNormalizado]
+    );
+
+    if (municipalidad.rows.length === 0) {
+      await client.query("ROLLBACK");
+
+      return res.status(404).json({
+        error: "Municipalidad no encontrada o inactiva",
+        muni_id: muniIdNormalizado,
+      });
+    }
+
+    /* ===================== 2. BLOQUEO 3 MINUTOS ===================== */
+
+    pasoActual = "verificando última marcación";
+
     const ultima = await client.query(
       `
       SELECT created_at
       FROM marcaciones
-      WHERE personal_dni = $1
+      WHERE muni_id = $1
+        AND personal_dni = $2
       ORDER BY created_at DESC
       LIMIT 1
       `,
-      [dni]
+      [
+        muniIdNormalizado,
+        dniNormalizado,
+      ]
     );
 
     if (ultima.rows.length > 0) {
-      const diff = await client.query(
-        `SELECT EXTRACT(EPOCH FROM (now() - $1)) AS segundos`,
+      const diferencia = await client.query(
+        `
+        SELECT EXTRACT(
+          EPOCH FROM (now() - $1::timestamptz)
+        ) AS segundos
+        `,
         [ultima.rows[0].created_at]
       );
 
-      if (diff.rows[0].segundos < 180) {
+      const segundos =
+        Number(diferencia.rows[0].segundos);
+
+      if (segundos < 180) {
         await client.query("ROLLBACK");
+
         return res.status(409).json({
-          error: "Debe esperar 3 minutos para volver a registrar",
+          error:
+            "Debe esperar 3 minutos para volver a registrar",
+          segundos_restantes:
+            Math.ceil(180 - segundos),
         });
       }
     }
 
-    /* 2️⃣ TURNO ACTIVO (CACHE) */
-    const turno = obtenerTurnoActual(muni_id);
-    
-    if (!turno) {
-      throw new Error("No existe turno activo");
-    }
-    
-    const turno_id = turno.id;
+    /* ===================== 3. TURNO ===================== */
 
-    /* 3️⃣ UPSERT PERSONAL */
-    await client.query(
-      `
-      INSERT INTO personal (dni, muni_id, nombre, cargo, gerencia)
-      VALUES ($1, $2, $3, $4, $5)
-      ON CONFLICT (dni) DO UPDATE SET
-        nombre   = EXCLUDED.nombre,
-        cargo    = EXCLUDED.cargo,
-        gerencia = EXCLUDED.gerencia
-      `,
-      [dni, muni_id, nombre, cargo, gerencia]
+    pasoActual = "obteniendo turno activo";
+
+    const turno = obtenerTurnoActual(
+      muniIdNormalizado
     );
 
-    /* 4️⃣ DETECTAR SECTOR (CACHE) */
-    let sector_nombre = null;
-    
-    const geos = GEO_CACHE.get(Number(muni_id)) || [];
-    
-    for (const geo of geos) {
-    
+    if (!turno) {
+      await client.query("ROLLBACK");
+
+      return res.status(409).json({
+        error:
+          "No existe un turno activo para esta municipalidad",
+        muni_id: muniIdNormalizado,
+      });
+    }
+
+    const turnoId = Number(turno.id);
+
+    /* ===================== 4. PERSONAL ===================== */
+
+    pasoActual = "registrando o actualizando personal";
+
+    await client.query(
+      `
+      INSERT INTO personal (
+        dni,
+        muni_id,
+        nombre,
+        cargo,
+        gerencia,
+        activo
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        TRUE
+      )
+      ON CONFLICT (dni)
+      DO UPDATE SET
+        muni_id  = EXCLUDED.muni_id,
+        nombre   = EXCLUDED.nombre,
+        cargo    = EXCLUDED.cargo,
+        gerencia = EXCLUDED.gerencia,
+        activo   = TRUE
+      `,
+      [
+        dniNormalizado,
+        muniIdNormalizado,
+        nombreNormalizado,
+        cargoNormalizado,
+        gerenciaNormalizada,
+      ]
+    );
+
+    /* ===================== 5. SECTOR ===================== */
+
+    pasoActual = "detectando sector";
+
+    let sectorNombre = null;
+
+    const geocercas =
+      GEO_CACHE.get(muniIdNormalizado) || [];
+
+    for (const geocerca of geocercas) {
       if (
+        Array.isArray(geocerca.puntos) &&
+        geocerca.puntos.length >= 3 &&
         pointInPolygon(
-          Number(lat),
-          Number(lng),
-          geo.puntos
+          latNormalizada,
+          lngNormalizada,
+          geocerca.puntos
         )
       ) {
-        sector_nombre = geo.nombre;
+        sectorNombre = geocerca.nombre;
         break;
       }
     }
-    
 
-    /* 5️⃣ INSERTAR UBICACIÓN CON SECTOR */
-    const ub = await client.query(
+    /* ===================== 6. UBICACIÓN ===================== */
+
+    pasoActual = "registrando ubicación";
+
+    const ubicacion = await client.query(
       `
-      INSERT INTO ubicaciones (muni_id, lat, lng, sector)
-      VALUES ($1, $2, $3, $4)
+      INSERT INTO ubicaciones (
+        muni_id,
+        lat,
+        lng,
+        sector
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4
+      )
       RETURNING id
       `,
-      [muni_id, lat, lng, sector_nombre]
+      [
+        muniIdNormalizado,
+        latNormalizada,
+        lngNormalizada,
+        sectorNombre,
+      ]
     );
 
-    const ubicacion_id = ub.rows[0].id;
+    const ubicacionId =
+      ubicacion.rows[0].id;
 
-    /* 6️⃣ OBTENER SUPERVISOR */
-    const sup = await client.query(
+    /* ===================== 7. SUPERVISOR ===================== */
+
+    pasoActual = "buscando supervisor";
+
+    const supervisor = await client.query(
       `
       SELECT id
       FROM supervisores
-      WHERE dni = $1 AND muni_id = $2
+      WHERE muni_id = $1
+        AND dni = $2
+      LIMIT 1
       `,
-      [supervisor_dni, muni_id]
+      [
+        muniIdNormalizado,
+        supervisorDniNormalizado,
+      ]
     );
 
-    const supervisor_id = sup.rows[0]?.id || null;
-        /* 7️⃣ FECHA OPERATIVA */
+    if (supervisor.rows.length === 0) {
+      await client.query("ROLLBACK");
+
+      return res.status(404).json({
+        error:
+          "El supervisor de la sesión no está registrado",
+        muni_id: muniIdNormalizado,
+        supervisor_dni:
+          supervisorDniNormalizado,
+      });
+    }
+
+    const supervisorId =
+      supervisor.rows[0].id;
+
+    /* ===================== 8. FECHA OPERATIVA ===================== */
+
+    pasoActual = "calculando fecha operativa";
+
     const ahoraPeru = new Date(
       new Date().toLocaleString(
         "en-US",
-        { timeZone: "America/Lima" }
+        {
+          timeZone: "America/Lima",
+        }
       )
     );
 
-    let fechaOperativa = new Date(ahoraPeru);
+    const fechaOperativa =
+      new Date(ahoraPeru);
 
-    // 🔥 T3 después de medianoche = día anterior
     if (
       turno.codigo_turno === "T3" &&
       ahoraPeru.getHours() < 12
@@ -429,12 +641,25 @@ app.post("/marcar", async (req, res) => {
       );
     }
 
-    const fechaSQL =
-      fechaOperativa
-        .toISOString()
-        .split("T")[0];
-    /* 7️⃣ INSERTAR MARCACIÓN */
-    await client.query(
+    const anio =
+      fechaOperativa.getFullYear();
+
+    const mes = String(
+      fechaOperativa.getMonth() + 1
+    ).padStart(2, "0");
+
+    const dia = String(
+      fechaOperativa.getDate()
+    ).padStart(2, "0");
+
+    const fechaSql =
+      `${anio}-${mes}-${dia}`;
+
+    /* ===================== 9. MARCACIÓN ===================== */
+
+    pasoActual = "insertando marcación";
+
+    const marcacion = await client.query(
       `
       INSERT INTO marcaciones (
         muni_id,
@@ -449,38 +674,96 @@ app.post("/marcar", async (req, res) => {
         created_at
       )
       VALUES (
-        $1,$2,$3,$4,$5,$6,
-      
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6,
         (now() AT TIME ZONE 'America/Lima')::time,
-        $7,$8,
+        $7,
+        $8,
         now()
       )
+      RETURNING
+        id,
+        fecha,
+        hora,
+        created_at
       `,
       [
-        muni_id,
-        dni,
-        supervisor_id,
-        ubicacion_id,
-        turno_id,
-        fechaSQL,
-        gerencia,
-        comentario
+        muniIdNormalizado,
+        dniNormalizado,
+        supervisorId,
+        ubicacionId,
+        turnoId,
+        fechaSql,
+        gerenciaNormalizada,
+        comentarioNormalizado,
       ]
     );
 
-    await client.query("COMMIT");
-    res.json({ ok: true });
+    pasoActual = "confirmando transacción";
 
+    await client.query("COMMIT");
+
+    return res.status(200).json({
+      ok: true,
+      mensaje:
+        "Marcación registrada correctamente",
+      marcacion: marcacion.rows[0],
+      turno: turno.codigo_turno,
+      sector: sectorNombre,
+    });
   } catch (error) {
-    await client.query("ROLLBACK");
-    console.error("❌ Error en /marcar:", error.message);
-    res.status(500).json({ error: "Error registrando marcación" });
+    if (client) {
+      try {
+        await client.query("ROLLBACK");
+      } catch (rollbackError) {
+        console.error(
+          "❌ Error realizando ROLLBACK:",
+          rollbackError
+        );
+      }
+    }
+
+    console.error(
+      "======================================"
+    );
+    console.error(
+      "❌ ERROR REAL EN POST /marcar"
+    );
+    console.error("Paso:", pasoActual);
+    console.error("Mensaje:", error.message);
+    console.error("Código PostgreSQL:", error.code);
+    console.error("Detalle:", error.detail);
+    console.error(
+      "Restricción:",
+      error.constraint
+    );
+    console.error("Tabla:", error.table);
+    console.error("Columna:", error.column);
+    console.error("Stack:", error.stack);
+    console.error(
+      "======================================"
+    );
+
+    return res.status(500).json({
+      error: "Error registrando marcación",
+      paso: pasoActual,
+      detalle: error.message,
+      codigo: error.code ?? null,
+      restriccion:
+        error.constraint ?? null,
+      tabla: error.table ?? null,
+      columna: error.column ?? null,
+    });
   } finally {
-    client.release();
+    if (client) {
+      client.release();
+    }
   }
 });
-
-
 /* =====================================================
    📋 LISTAR MARCACIONES
 ===================================================== */
