@@ -1030,109 +1030,168 @@ const fechaSQL =
   }
 });
 
+/* =====================================================
+   🛰 SUPERVISORES POR FECHA / TURNO
+   - Devuelve última posición dentro del turno elegido
+   - TODO devuelve última posición de todos los turnos
+   - Respeta fecha operativa
+===================================================== */
 app.get("/supervisores-activos", async (req, res) => {
-  const { muni_id, gerencia } = req.query;
+
+  const {
+    muni_id,
+    gerencia,
+    fecha,
+    turno
+  } = req.query;
 
   if (!muni_id) {
-    return res.status(400).json({ error: "muni_id requerido" });
-  }
-
-  try {
-
-    let query = `
-      SELECT DISTINCT ON (ps.supervisor_id)
-        ps.supervisor_id,
-        s.nombre,
-        s.gerencia,
-        s.cargo,
-        ps.lat,
-        ps.lng,
-        ps.created_at,
-        t.codigo_turno,
-        CASE
-          WHEN ps.created_at > (now() AT TIME ZONE 'America/Lima') - interval '2 minutes'
-          THEN true
-          ELSE false
-        END AS activo
-      FROM patrullajes_supervisor ps
-      JOIN supervisores s ON s.id = ps.supervisor_id
-      LEFT JOIN turnos t ON t.id = ps.turno_id
-      WHERE ps.muni_id = $1
-    `;
-
-    const values = [muni_id];
-    let idx = 2;
-
-    if (gerencia && gerencia.trim() !== "") {
-      query += ` AND TRIM(s.gerencia) = TRIM($${idx})`;
-      values.push(gerencia.trim());
-      idx++;
-    }
-
-    query += `
-      ORDER BY ps.supervisor_id, ps.created_at DESC
-    `;
-
-    const result = await pool.query(query, values);
-
-    res.json(result.rows);
-
-  } catch (error) {
-    console.error("❌ Error supervisores-activos:", error);
-    res.status(500).json({ error: "Error del servidor" });
-  }
-});
-
-app.get("/recorrido-supervisor", async (req, res) => {
-  const { muni_id, supervisor_id, gerencia } = req.query;
-
-  if (!muni_id || !supervisor_id) {
     return res.status(400).json({
-      error: "muni_id y supervisor_id requeridos"
+      error: "muni_id requerido"
     });
   }
 
   try {
 
     let query = `
-      SELECT ps.lat, ps.lng, ps.created_at
+      SELECT DISTINCT ON (ps.supervisor_id)
+
+        ps.supervisor_id,
+
+        s.nombre,
+        s.gerencia,
+        s.cargo,
+
+        ps.lat,
+        ps.lng,
+
+        ps.fecha,
+        ps.created_at,
+
+        t.codigo_turno,
+
+        CASE
+          WHEN ps.created_at >
+            (now() AT TIME ZONE 'America/Lima')
+            - interval '2 minutes'
+          THEN true
+          ELSE false
+        END AS activo
+
       FROM patrullajes_supervisor ps
-      JOIN supervisores s ON s.id = ps.supervisor_id
+
+      JOIN supervisores s
+        ON s.id = ps.supervisor_id
+
+      LEFT JOIN turnos t
+        ON t.id = ps.turno_id
+
       WHERE ps.muni_id = $1
-        AND ps.supervisor_id = $2
-        AND ps.fecha = (
-          CASE
-            WHEN t.codigo_turno = 'T3'
-             AND EXTRACT(HOUR FROM (now() AT TIME ZONE 'America/Lima')) < 12
-            THEN (
-              (now() AT TIME ZONE 'America/Lima')::date - 1
-            )
-            ELSE
-              (now() AT TIME ZONE 'America/Lima')::date
-          END
-        )
     `;
 
-    const values = [muni_id, supervisor_id];
-    let idx = 3;
+    const values = [muni_id];
 
-    if (gerencia && gerencia.trim() !== "") {
-      query += ` AND TRIM(s.gerencia) = TRIM($${idx})`;
-      values.push(gerencia.trim());
+    let idx = 2;
+
+
+    /* ==============================
+       FECHA OPERATIVA
+    ============================== */
+    if (fecha) {
+
+      query += `
+        AND ps.fecha = $${idx}
+      `;
+
+      values.push(fecha);
+
       idx++;
     }
 
-    query += ` ORDER BY ps.created_at ASC`;
 
-    const result = await pool.query(query, values);
+    /* ==============================
+       TURNO
+    ============================== */
+    if (
+      turno &&
+      turno !== "TODO" &&
+      turno !== "TODOS"
+    ) {
 
-    res.json(result.rows);
+      query += `
+        AND t.codigo_turno = $${idx}
+      `;
+
+      values.push(
+        String(turno)
+          .trim()
+          .toUpperCase()
+      );
+
+      idx++;
+    }
+
+
+    /* ==============================
+       GERENCIA
+    ============================== */
+    if (
+      gerencia &&
+      gerencia.trim() !== ""
+    ) {
+
+      query += `
+        AND TRIM(s.gerencia)
+            = TRIM($${idx})
+      `;
+
+      values.push(
+        gerencia.trim()
+      );
+
+      idx++;
+    }
+
+
+    /*
+      DISTINCT ON:
+      nos quedamos con la ÚLTIMA
+      posición válida dentro del filtro
+    */
+    query += `
+      ORDER BY
+        ps.supervisor_id,
+        ps.created_at DESC
+    `;
+
+
+    const result =
+      await pool.query(
+        query,
+        values
+      );
+
+
+    res.json(
+      result.rows
+    );
 
   } catch (error) {
-    console.error("❌ Error recorrido-supervisor:", error);
-    res.status(500).json({ error: "Error del servidor" });
+
+    console.error(
+      "❌ Error supervisores-activos:",
+      error
+    );
+
+    res.status(500).json({
+      error: "Error del servidor"
+    });
+
   }
+
 });
+
+
 
 
 
