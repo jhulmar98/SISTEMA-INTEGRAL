@@ -1399,6 +1399,171 @@ router.get("/dashboard-delito", async (req, res) => {
   }
 
 });
+
+/* =====================================================
+   🏠 DASHBOARD HOME DIARIO
+===================================================== */
+router.get("/dashboard-home", async (req, res) => {
+
+  const { muni_id, fecha } = req.query;
+
+  if (!muni_id) {
+    return res.status(400).json({
+      error: "muni_id requerido"
+    });
+  }
+
+  try {
+
+    const fechaConsulta =
+      fecha ||
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Lima",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+      }).format(new Date());
+
+    /* =====================================================
+       1️⃣ PERSONAL REGISTRADO POR TURNO
+    ===================================================== */
+
+    const personalTurnos = await pool.query(
+      `
+      SELECT
+        t.codigo_turno,
+        COUNT(DISTINCT m.personal_dni)::INTEGER AS personal,
+        COUNT(*)::INTEGER AS marcaciones
+      FROM marcaciones m
+      LEFT JOIN turnos t
+        ON t.id = m.turno_id
+      WHERE m.muni_id = $1
+        AND m.fecha = $2
+      GROUP BY t.codigo_turno
+      ORDER BY t.codigo_turno
+      `,
+      [muni_id, fechaConsulta]
+    );
+
+    /* =====================================================
+       2️⃣ RANKING SUPERVISORES POR ESCANEOS
+       DUPLICADOS SÍ CUENTAN
+    ===================================================== */
+
+    const rankingEscaneos = await pool.query(
+      `
+      SELECT
+        s.id AS supervisor_id,
+        s.nombre,
+        s.dni,
+
+        t.codigo_turno,
+
+        COUNT(*)::INTEGER AS total_escaneos,
+
+        MIN(m.hora) AS primer_escaneo,
+        MAX(m.hora) AS ultimo_escaneo
+
+      FROM marcaciones m
+
+      JOIN supervisores s
+        ON s.id = m.supervisor_id
+
+      LEFT JOIN turnos t
+        ON t.id = m.turno_id
+
+      WHERE m.muni_id = $1
+        AND m.fecha = $2
+
+      GROUP BY
+        s.id,
+        s.nombre,
+        s.dni,
+        t.codigo_turno
+
+      ORDER BY
+        total_escaneos DESC,
+        s.nombre ASC
+      `,
+      [muni_id, fechaConsulta]
+    );
+
+    /* =====================================================
+       3️⃣ TRACKING DE SUPERVISORES
+       INICIO / FIN / PUNTOS
+    ===================================================== */
+
+    const tracking = await pool.query(
+      `
+      SELECT
+        ps.supervisor_id,
+
+        s.nombre,
+        s.dni,
+
+        t.codigo_turno,
+
+        MIN(ps.created_at) AS hora_inicio,
+        MAX(ps.created_at) AS hora_fin,
+
+        COUNT(*)::INTEGER AS puntos_tracking
+
+      FROM patrullajes_supervisor ps
+
+      JOIN supervisores s
+        ON s.id = ps.supervisor_id
+
+      LEFT JOIN turnos t
+        ON t.id = ps.turno_id
+
+      WHERE ps.muni_id = $1
+        AND ps.fecha = $2
+
+      GROUP BY
+        ps.supervisor_id,
+        s.nombre,
+        s.dni,
+        t.codigo_turno
+
+      ORDER BY
+        hora_inicio ASC
+      `,
+      [muni_id, fechaConsulta]
+    );
+
+    /* =====================================================
+       RESPUESTA
+    ===================================================== */
+
+    res.json({
+
+      fecha: fechaConsulta,
+
+      personal_turnos:
+        personalTurnos.rows,
+
+      ranking_escaneos:
+        rankingEscaneos.rows,
+
+      tracking:
+        tracking.rows
+
+    });
+
+  } catch (error) {
+
+    console.error(
+      "❌ dashboard-home:",
+      error
+    );
+
+    res.status(500).json({
+      error: "Error obteniendo dashboard"
+    });
+
+  }
+
+});
 module.exports = router;
 
 
