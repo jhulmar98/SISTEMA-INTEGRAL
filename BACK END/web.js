@@ -1399,13 +1399,22 @@ router.get("/dashboard-delito", async (req, res) => {
   }
 
 });
-
 /* =====================================================
    🏠 DASHBOARD HOME DIARIO
+   - Filtro por fecha
+   - Filtro por turno
+   - Personal único
+   - Escaneos con duplicados
+   - Ranking de supervisores
+   - Tracking + distancia recorrida
 ===================================================== */
 router.get("/dashboard-home", async (req, res) => {
 
-  const { muni_id, fecha } = req.query;
+  const {
+    muni_id,
+    fecha,
+    turno = "TODO"
+  } = req.query;
 
   if (!muni_id) {
     return res.status(400).json({
@@ -1424,129 +1433,582 @@ router.get("/dashboard-home", async (req, res) => {
         day: "2-digit"
       }).format(new Date());
 
+    const turnoConsulta =
+      String(turno || "TODO")
+        .trim()
+        .toUpperCase();
+
+
     /* =====================================================
-       1️⃣ PERSONAL REGISTRADO POR TURNO
+       FILTRO TURNO MARCACIONES
     ===================================================== */
 
-    const personalTurnos = await pool.query(
-      `
-      SELECT
-        t.codigo_turno,
-        COUNT(DISTINCT m.personal_dni)::INTEGER AS personal,
-        COUNT(*)::INTEGER AS marcaciones
-      FROM marcaciones m
-      LEFT JOIN turnos t
-        ON t.id = m.turno_id
-      WHERE m.muni_id = $1
-        AND m.fecha = $2
-      GROUP BY t.codigo_turno
-      ORDER BY t.codigo_turno
-      `,
-      [muni_id, fechaConsulta]
-    );
+    let filtroTurnoMarcaciones = "";
+    const valoresMarcaciones = [
+      muni_id,
+      fechaConsulta
+    ];
+
+    if (
+      turnoConsulta !== "TODO" &&
+      turnoConsulta !== "TODOS"
+    ) {
+
+      filtroTurnoMarcaciones = `
+        AND t.codigo_turno = $3
+      `;
+
+      valoresMarcaciones.push(
+        turnoConsulta
+      );
+    }
+
 
     /* =====================================================
-       2️⃣ RANKING SUPERVISORES POR ESCANEOS
+       FILTRO TURNO TRACKING
+    ===================================================== */
+
+    let filtroTurnoTracking = "";
+    const valoresTracking = [
+      muni_id,
+      fechaConsulta
+    ];
+
+    if (
+      turnoConsulta !== "TODO" &&
+      turnoConsulta !== "TODOS"
+    ) {
+
+      filtroTurnoTracking = `
+        AND t.codigo_turno = $3
+      `;
+
+      valoresTracking.push(
+        turnoConsulta
+      );
+    }
+
+
+    /* =====================================================
+       1️⃣ KPI PERSONAL ÚNICO
+    ===================================================== */
+
+    const personalTotalResult =
+      await pool.query(
+        `
+        SELECT
+          COUNT(
+            DISTINCT m.personal_dni
+          )::INTEGER AS total
+
+        FROM marcaciones m
+
+        LEFT JOIN turnos t
+          ON t.id = m.turno_id
+
+        WHERE m.muni_id = $1
+          AND m.fecha = $2
+
+          ${filtroTurnoMarcaciones}
+        `,
+        valoresMarcaciones
+      );
+
+
+    /* =====================================================
+       2️⃣ KPI TOTAL ESCANEOS
        DUPLICADOS SÍ CUENTAN
     ===================================================== */
 
-    const rankingEscaneos = await pool.query(
-      `
-      SELECT
-        s.id AS supervisor_id,
-        s.nombre,
-        s.dni,
+    const escaneosTotalResult =
+      await pool.query(
+        `
+        SELECT
+          COUNT(*)::INTEGER AS total
 
-        t.codigo_turno,
+        FROM marcaciones m
 
-        COUNT(*)::INTEGER AS total_escaneos,
+        LEFT JOIN turnos t
+          ON t.id = m.turno_id
 
-        MIN(m.hora) AS primer_escaneo,
-        MAX(m.hora) AS ultimo_escaneo
+        WHERE m.muni_id = $1
+          AND m.fecha = $2
 
-      FROM marcaciones m
+          ${filtroTurnoMarcaciones}
+        `,
+        valoresMarcaciones
+      );
 
-      JOIN supervisores s
-        ON s.id = m.supervisor_id
-
-      LEFT JOIN turnos t
-        ON t.id = m.turno_id
-
-      WHERE m.muni_id = $1
-        AND m.fecha = $2
-
-      GROUP BY
-        s.id,
-        s.nombre,
-        s.dni,
-        t.codigo_turno
-
-      ORDER BY
-        total_escaneos DESC,
-        s.nombre ASC
-      `,
-      [muni_id, fechaConsulta]
-    );
 
     /* =====================================================
-       3️⃣ TRACKING DE SUPERVISORES
-       INICIO / FIN / PUNTOS
+       3️⃣ KPI SUPERVISORES CON ACTIVIDAD
     ===================================================== */
 
-    const tracking = await pool.query(
-      `
-      SELECT
-        ps.supervisor_id,
+    const supervisoresTotalResult =
+      await pool.query(
+        `
+        SELECT
+          COUNT(
+            DISTINCT m.supervisor_id
+          )::INTEGER AS total
 
-        s.nombre,
-        s.dni,
+        FROM marcaciones m
 
-        t.codigo_turno,
+        LEFT JOIN turnos t
+          ON t.id = m.turno_id
 
-        MIN(ps.created_at) AS hora_inicio,
-        MAX(ps.created_at) AS hora_fin,
+        WHERE m.muni_id = $1
+          AND m.fecha = $2
+          AND m.supervisor_id IS NOT NULL
 
-        COUNT(*)::INTEGER AS puntos_tracking
+          ${filtroTurnoMarcaciones}
+        `,
+        valoresMarcaciones
+      );
 
-      FROM patrullajes_supervisor ps
-
-      JOIN supervisores s
-        ON s.id = ps.supervisor_id
-
-      LEFT JOIN turnos t
-        ON t.id = ps.turno_id
-
-      WHERE ps.muni_id = $1
-        AND ps.fecha = $2
-
-      GROUP BY
-        ps.supervisor_id,
-        s.nombre,
-        s.dni,
-        t.codigo_turno
-
-      ORDER BY
-        hora_inicio ASC
-      `,
-      [muni_id, fechaConsulta]
-    );
 
     /* =====================================================
-       RESPUESTA
+       4️⃣ PERSONAL REGISTRADO POR TURNO
+    ===================================================== */
+
+    const personalTurnos =
+      await pool.query(
+        `
+        SELECT
+
+          t.codigo_turno AS turno,
+
+          COUNT(
+            DISTINCT m.personal_dni
+          )::INTEGER AS personal,
+
+          COUNT(*)::INTEGER AS escaneos
+
+        FROM marcaciones m
+
+        LEFT JOIN turnos t
+          ON t.id = m.turno_id
+
+        WHERE m.muni_id = $1
+          AND m.fecha = $2
+
+        GROUP BY
+          t.codigo_turno
+
+        ORDER BY
+          t.codigo_turno
+        `,
+        [
+          muni_id,
+          fechaConsulta
+        ]
+      );
+
+
+    /* =====================================================
+       5️⃣ RANKING SUPERVISORES POR ESCANEOS
+       DUPLICADOS SÍ CUENTAN
+    ===================================================== */
+
+    const rankingEscaneos =
+      await pool.query(
+        `
+        SELECT
+
+          s.id AS supervisor_id,
+
+          s.nombre AS supervisor,
+
+          s.dni,
+
+          t.codigo_turno AS turno,
+
+          COUNT(*)::INTEGER AS escaneos,
+
+          TO_CHAR(
+            MIN(m.hora),
+            'HH24:MI:SS'
+          ) AS primer_escaneo,
+
+          TO_CHAR(
+            MAX(m.hora),
+            'HH24:MI:SS'
+          ) AS ultimo_escaneo
+
+        FROM marcaciones m
+
+        JOIN supervisores s
+          ON s.id = m.supervisor_id
+
+        LEFT JOIN turnos t
+          ON t.id = m.turno_id
+
+        WHERE m.muni_id = $1
+          AND m.fecha = $2
+
+          ${filtroTurnoMarcaciones}
+
+        GROUP BY
+
+          s.id,
+          s.nombre,
+          s.dni,
+          t.codigo_turno
+
+        ORDER BY
+
+          escaneos DESC,
+          s.nombre ASC
+        `,
+        valoresMarcaciones
+      );
+
+
+    /* =====================================================
+       6️⃣ OBTENER PUNTOS DE TRACKING
+       PARA CALCULAR DISTANCIA REAL
+    ===================================================== */
+
+    const trackingPuntos =
+      await pool.query(
+        `
+        SELECT
+
+          ps.supervisor_id,
+
+          s.nombre AS supervisor,
+
+          s.dni,
+
+          t.codigo_turno AS turno,
+
+          ps.lat,
+          ps.lng,
+          ps.created_at
+
+        FROM patrullajes_supervisor ps
+
+        JOIN supervisores s
+          ON s.id = ps.supervisor_id
+
+        LEFT JOIN turnos t
+          ON t.id = ps.turno_id
+
+        WHERE ps.muni_id = $1
+          AND ps.fecha = $2
+
+          ${filtroTurnoTracking}
+
+        ORDER BY
+
+          ps.supervisor_id,
+          t.codigo_turno,
+          ps.created_at ASC
+        `,
+        valoresTracking
+      );
+
+
+    /* =====================================================
+       FUNCIÓN HAVERSINE
+    ===================================================== */
+
+    function distanciaMetros(
+      lat1,
+      lng1,
+      lat2,
+      lng2
+    ) {
+
+      const R = 6371000;
+
+      const rad = grados =>
+        grados * Math.PI / 180;
+
+      const dLat =
+        rad(lat2 - lat1);
+
+      const dLng =
+        rad(lng2 - lng1);
+
+      const a =
+        Math.sin(dLat / 2) *
+        Math.sin(dLat / 2) +
+
+        Math.cos(
+          rad(lat1)
+        ) *
+
+        Math.cos(
+          rad(lat2)
+        ) *
+
+        Math.sin(dLng / 2) *
+        Math.sin(dLng / 2);
+
+      const c =
+        2 *
+        Math.atan2(
+          Math.sqrt(a),
+          Math.sqrt(1 - a)
+        );
+
+      return R * c;
+    }
+
+
+    /* =====================================================
+       AGRUPAR TRACKING
+    ===================================================== */
+
+    const gruposTracking =
+      new Map();
+
+    for (
+      const punto
+      of trackingPuntos.rows
+    ) {
+
+      const key =
+        `${punto.supervisor_id}__${punto.turno || "SIN_TURNO"}`;
+
+      if (
+        !gruposTracking.has(key)
+      ) {
+
+        gruposTracking.set(
+          key,
+          {
+            supervisor_id:
+              punto.supervisor_id,
+
+            supervisor:
+              punto.supervisor,
+
+            dni:
+              punto.dni,
+
+            turno:
+              punto.turno,
+
+            puntos: []
+          }
+        );
+      }
+
+      const lat =
+        Number(punto.lat);
+
+      const lng =
+        Number(punto.lng);
+
+      if (
+        !Number.isFinite(lat) ||
+        !Number.isFinite(lng)
+      ) {
+        continue;
+      }
+
+      gruposTracking
+        .get(key)
+        .puntos
+        .push({
+          lat,
+          lng,
+          created_at:
+            punto.created_at
+        });
+    }
+
+
+    /* =====================================================
+       CALCULAR RECORRIDOS
+    ===================================================== */
+
+    const rankingRecorridos = [];
+
+    let recorridoTotalKm = 0;
+
+    for (
+      const grupo
+      of gruposTracking.values()
+    ) {
+
+      const puntos =
+        grupo.puntos;
+
+      if (!puntos.length)
+        continue;
+
+      let metros = 0;
+
+      for (
+        let i = 1;
+        i < puntos.length;
+        i++
+      ) {
+
+        metros += distanciaMetros(
+          puntos[i - 1].lat,
+          puntos[i - 1].lng,
+          puntos[i].lat,
+          puntos[i].lng
+        );
+      }
+
+      const distanciaKm =
+        metros / 1000;
+
+      recorridoTotalKm +=
+        distanciaKm;
+
+      const inicio =
+        puntos[0]
+          ?.created_at;
+
+      const fin =
+        puntos[
+          puntos.length - 1
+        ]?.created_at;
+
+      rankingRecorridos.push({
+
+        supervisor_id:
+          grupo.supervisor_id,
+
+        supervisor:
+          grupo.supervisor,
+
+        dni:
+          grupo.dni,
+
+        turno:
+          grupo.turno,
+
+        hora_inicio:
+          inicio
+            ? new Intl.DateTimeFormat(
+                "es-PE",
+                {
+                  timeZone:
+                    "America/Lima",
+
+                  hour:
+                    "2-digit",
+
+                  minute:
+                    "2-digit",
+
+                  second:
+                    "2-digit",
+
+                  hour12:
+                    false
+                }
+              ).format(
+                new Date(inicio)
+              )
+            : "—",
+
+        hora_fin:
+          fin
+            ? new Intl.DateTimeFormat(
+                "es-PE",
+                {
+                  timeZone:
+                    "America/Lima",
+
+                  hour:
+                    "2-digit",
+
+                  minute:
+                    "2-digit",
+
+                  second:
+                    "2-digit",
+
+                  hour12:
+                    false
+                }
+              ).format(
+                new Date(fin)
+              )
+            : "—",
+
+        distancia_km:
+          Number(
+            distanciaKm.toFixed(2)
+          ),
+
+        puntos_tracking:
+          puntos.length
+
+      });
+    }
+
+
+    /* =====================================================
+       ORDENAR RANKING RECORRIDO
+    ===================================================== */
+
+    rankingRecorridos.sort(
+      (a, b) =>
+        b.distancia_km -
+        a.distancia_km
+    );
+
+
+    /* =====================================================
+       RESPUESTA FINAL COMPATIBLE CON HOME.JS
     ===================================================== */
 
     res.json({
 
-      fecha: fechaConsulta,
+      fecha:
+        fechaConsulta,
 
-      personal_turnos:
+      turno:
+        turnoConsulta,
+
+      kpis: {
+
+        personal_total:
+          Number(
+            personalTotalResult
+              .rows[0]
+              ?.total || 0
+          ),
+
+        escaneos_total:
+          Number(
+            escaneosTotalResult
+              .rows[0]
+              ?.total || 0
+          ),
+
+        supervisores_total:
+          Number(
+            supervisoresTotalResult
+              .rows[0]
+              ?.total || 0
+          ),
+
+        recorrido_total_km:
+          Number(
+            recorridoTotalKm
+              .toFixed(2)
+          )
+
+      },
+
+      personal_por_turno:
         personalTurnos.rows,
 
       ranking_escaneos:
         rankingEscaneos.rows,
 
-      tracking:
-        tracking.rows
+      ranking_recorridos:
+        rankingRecorridos
 
     });
 
@@ -1558,7 +2020,10 @@ router.get("/dashboard-home", async (req, res) => {
     );
 
     res.status(500).json({
-      error: "Error obteniendo dashboard"
+      error:
+        "Error obteniendo dashboard",
+      detalle:
+        error.message
     });
 
   }
